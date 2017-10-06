@@ -57,18 +57,20 @@ public class SlackLayout extends AbstractStringLayout {
 	@Override
 	public final String toSerializable(LogEvent event) {
 		JsonObject payload = new JsonObject();
+		JsonArray attachments = new JsonArray();
+		JsonObject attachment = new JsonObject();
 		
-		// Add Thread name
+		// Add Thread name and Class location
 		StringBuilder text = new StringBuilder();
 		text.append('[').append(event.getThreadName()).append(']');
 		if (event.getSource() != null) {
 			text.append(' ').append(event.getSource().getClassName());
 		}
-		payload.addProperty("text", text.toString());
+		attachment.addProperty("text", text.toString());
 		
-		JsonArray attachments = new JsonArray();
-		JsonObject attachment = new JsonObject();
+		// Add Color
 		attachment.addProperty("color", getColorByLevel(event.getLevel())); // Based on level
+		
 		JsonArray fields = new JsonArray();
 
 		// Add Level Field
