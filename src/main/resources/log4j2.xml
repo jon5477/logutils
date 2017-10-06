@@ -2,6 +2,7 @@
 <Configuration name="Default" packages="net.rcgsoft.logging">
 	<Appenders>
 		<Console name="Console" target="SYSTEM_OUT">
+			<PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %logger{36}%n%-5level: %msg%n"/>
 		</Console>
 		<Console name="Slack" target="SYSTEM_OUT">
 			<SlackLayout></SlackLayout>
@@ -10,6 +11,7 @@
 	<Loggers>
 		<Root level="INFO">
 			<!--<AppenderRef ref="Console"/>-->
+			<!--<AppenderRef ref="Slack"/>-->
 			<AppenderRef ref="Slack"/>
 		</Root>
 	</Loggers>

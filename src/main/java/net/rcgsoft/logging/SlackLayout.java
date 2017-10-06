@@ -1,18 +1,15 @@
 package net.rcgsoft.logging;
 
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.DefaultConfiguration;
 import org.apache.logging.log4j.core.config.Node;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.core.impl.ThrowableProxy;
 import org.apache.logging.log4j.core.layout.AbstractStringLayout;
-import org.apache.logging.log4j.core.layout.PatternLayout;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -22,21 +19,16 @@ import com.google.gson.JsonObject;
 @Plugin(name = "SlackLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public class SlackLayout extends AbstractStringLayout {
 	private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-	private static final String DEFAULT_FOOTER = "]";
-	private static final String DEFAULT_HEADER = "[";
 	private static final String CONTENT_TYPE = "application/json";
 	private static final boolean useBrightColors = true;
 
-	protected SlackLayout(Configuration config, Charset aCharset) {
-		super(config,
-				aCharset,
-				PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(DEFAULT_HEADER).setDefaultPattern(DEFAULT_HEADER).build(),
-				PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(DEFAULT_FOOTER).setDefaultPattern(DEFAULT_FOOTER).build());
+	protected SlackLayout() {
+		super(StandardCharsets.UTF_8);
 	}
 
 	@PluginFactory
 	public static SlackLayout createLayout() {
-		return new SlackLayout(new DefaultConfiguration(), StandardCharsets.UTF_8);
+		return new SlackLayout();
 	}
 
 	private static final String getColorByLevel(Level level) {
@@ -65,6 +57,15 @@ public class SlackLayout extends AbstractStringLayout {
 	@Override
 	public final String toSerializable(LogEvent event) {
 		JsonObject payload = new JsonObject();
+		
+		// Add Thread name
+		StringBuilder text = new StringBuilder();
+		text.append('[').append(event.getThreadName()).append(']');
+		if (event.getSource() != null) {
+			text.append(' ').append(event.getSource().getClassName());
+		}
+		payload.addProperty("text", text.toString());
+		
 		JsonArray attachments = new JsonArray();
 		JsonObject attachment = new JsonObject();
 		attachment.addProperty("color", getColorByLevel(event.getLevel())); // Based on level
@@ -84,18 +85,12 @@ public class SlackLayout extends AbstractStringLayout {
 		msgField.addProperty("short", false);
 		fields.add(msgField);
 		
-		Throwable t = event.getThrown();
-		if (t != null && t.getStackTrace().length > 0) {
-			StackTraceElement[] trace = t.getStackTrace();
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < trace.length; i++) {
-				sb.append('\n').append(trace[i].toString());
-			}
-			
+		ThrowableProxy tp = event.getThrownProxy();
+		if (tp != null) {
 			// Add Stack Trace Field
 			JsonObject stField = new JsonObject();
-			stField.addProperty("title", "Stack Trace");
-			stField.addProperty("value", sb.substring(1));
+			stField.addProperty("title", "Exception");
+			stField.addProperty("value", tp.getCauseStackTraceAsString(""));
 			stField.addProperty("short", false);
 			fields.add(stField);
 		}
