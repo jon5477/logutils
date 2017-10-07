@@ -4,9 +4,12 @@
   <groupId>net.rcgsoft.logging</groupId>
   <artifactId>log-utils</artifactId>
   <packaging>jar</packaging>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0</version>
   <name>log-utils</name>
   <url>http://maven.apache.org</url>
+  <properties>
+  	<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
   <dependencies>
   	<dependency>
   		<groupId>org.apache.logging.log4j</groupId>
@@ -45,4 +48,5 @@
   		</plugin>
   	</plugins>
   </build>
+  <description>Slack Appender for Log4J</description>
 </project>
