@@ -18,7 +18,7 @@ import com.google.gson.JsonObject;
 
 @Plugin(name = "SlackLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public class SlackLayout extends AbstractStringLayout {
-	private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+	private static final Gson gson = new GsonBuilder().create();
 	private static final String CONTENT_TYPE = "application/json";
 	private static final boolean useBrightColors = true;
 
@@ -77,14 +77,14 @@ public class SlackLayout extends AbstractStringLayout {
 		JsonObject levelField = new JsonObject();
 		levelField.addProperty("title", "Level");
 		levelField.addProperty("value", event.getLevel().toString());
-		levelField.addProperty("short", false);
+		levelField.addProperty("short", Boolean.FALSE);
 		fields.add(levelField);
 		
 		// Add Message Field
 		JsonObject msgField = new JsonObject();
 		msgField.addProperty("title", "Message");
 		msgField.addProperty("value", event.getMessage().getFormattedMessage());
-		msgField.addProperty("short", false);
+		msgField.addProperty("short", Boolean.FALSE);
 		fields.add(msgField);
 		
 		ThrowableProxy tp = event.getThrownProxy();
@@ -93,14 +93,14 @@ public class SlackLayout extends AbstractStringLayout {
 			JsonObject stField = new JsonObject();
 			stField.addProperty("title", "Exception");
 			stField.addProperty("value", tp.getCauseStackTraceAsString(""));
-			stField.addProperty("short", false);
+			stField.addProperty("short", Boolean.FALSE);
 			fields.add(stField);
 		}
 		
 		// Add fields
 		attachment.add("fields", fields);
 		// Add timestamp
-		attachment.addProperty("ts", (event.getTimeMillis() / 1000));
+		attachment.addProperty("ts", Long.valueOf(event.getTimeMillis() / 1000));
 		// Add attachments
 		attachments.add(attachment);
 		// Create the payload
