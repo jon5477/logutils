@@ -56,7 +56,7 @@ public final class SlackAppender extends AbstractAppender {
 		@SuppressWarnings("resource")
 		@Override
 		public SlackAppender build() {
-			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(), getName(), url);
+			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(), getName(), url, verifyHostname);
 			return new SlackAppender(getName(), SlackLayout.createLayout(), getFilter(), isIgnoreExceptions(), httpManager);
 		}
 
