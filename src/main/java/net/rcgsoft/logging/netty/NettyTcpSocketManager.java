@@ -24,9 +24,13 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
 /**
@@ -157,8 +161,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	@Override
-	protected synchronized boolean closeOutputStream() {
-		final boolean closed = super.closeOutputStream();
+	protected boolean closeOutputStream() {
 		if (reconnector != null) {
 			reconnector.shutdown();
 			reconnector.interrupt();
@@ -174,7 +177,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				return false;
 			}
 		}
-		return closed;
+		return true;
 	}
 
 	public int getConnectTimeoutMillis() {
@@ -329,7 +332,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				b.option(ChannelOption.IP_TOS, actualTrafficClass);
 			}
 		}
-		// TODO Set the Netty handler
+		// Set the Netty handler
+		b.handler(new ChannelInitializer<SocketChannel>() {
+			@Override
+			protected void initChannel(SocketChannel ch) throws Exception {
+				ch.pipeline().addLast(new AppenderInboundHandler());
+			}
+		});
 		ChannelFuture cf = b.connect(socketAddress.getAddress().getHostAddress(), socketAddress.getPort());
 		boolean completed = cf.await(connectTimeoutMillis);
 		if (completed) {
@@ -462,7 +471,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	public static class HostResolver {
-
 		public List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
 			InetAddress[] addresses = InetAddress.getAllByName(host);
 			List<InetSocketAddress> socketAddresses = new ArrayList<>(addresses.length);
@@ -484,5 +492,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				+ ", immediateFail=" + immediateFail + ", connectTimeoutMillis=" + connectTimeoutMillis
 				+ ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port + ", layout=" + layout
 				+ ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
+	}
+
+	private static class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
+		@Override
+		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+			LOGGER.debug(cause.getMessage(), cause);
+		}
 	}
 }
