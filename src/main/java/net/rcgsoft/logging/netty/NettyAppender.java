@@ -53,7 +53,6 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	 */
 	public static abstract class AbstractBuilder<B extends AbstractBuilder<B>>
 			extends AbstractOutputStreamAppender.Builder<B> {
-
 		@PluginBuilderAttribute
 		private boolean advertise;
 
@@ -178,7 +177,6 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	 */
 	public static class Builder extends AbstractBuilder<Builder>
 			implements org.apache.logging.log4j.core.util.Builder<NettyAppender> {
-
 		@SuppressWarnings("resource")
 		@Override
 		public NettyAppender build() {
@@ -189,23 +187,19 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 				AbstractLifeCycle.LOGGER.error("No layout provided for NettyAppender");
 				return null;
 			}
-
 			final String name = getName();
 			if (name == null) {
 				AbstractLifeCycle.LOGGER.error("No name provided for NettyAppender");
 				return null;
 			}
-
 			final Protocol protocol = getProtocol();
 			final Protocol actualProtocol = protocol != null ? protocol : Protocol.TCP;
 			if (actualProtocol == Protocol.UDP) {
 				immediateFlush = true;
 			}
-
 			final AbstractSocketManager manager = NettyAppender.createSocketManager(name, actualProtocol, getHost(),
 					getPort(), getConnectTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
 					getImmediateFail(), layout, getBufferSize(), getSocketOptions());
-
 			return new NettyAppender(name, layout, getFilter(), manager, isIgnoreExceptions(),
 					!bufferedIo || immediateFlush, getAdvertise() ? getConfiguration().getAdvertiser() : null,
 					getPropertyArray());

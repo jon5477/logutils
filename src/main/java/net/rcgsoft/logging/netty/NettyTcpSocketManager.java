@@ -1,12 +1,9 @@
 package net.rcgsoft.logging.netty;
 
-import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,17 +17,23 @@ import org.apache.logging.log4j.core.appender.ManagerFactory;
 import org.apache.logging.log4j.core.appender.OutputStreamManager;
 import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
-import org.apache.logging.log4j.core.util.Closer;
 import org.apache.logging.log4j.core.util.Log4jThread;
-import org.apache.logging.log4j.core.util.NullOutputStream;
 import org.apache.logging.log4j.util.Strings;
 
+import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
 
 /**
  * Manager of TCP Socket connections.
  */
 public class NettyTcpSocketManager extends AbstractSocketManager {
+	private static final EventLoopGroup workerGroup = new NioEventLoopGroup();
 	/**
 	 * The default reconnection delay (30000 milliseconds or 30 seconds).
 	 */
@@ -64,11 +67,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param layout                  The Layout.
 	 * @param bufferSize              The buffer size.
 	 */
-	public NettyTcpSocketManager(final String name, final OutputStream os, final Channel channel,
-			final InetAddress inetAddress, final String host, final int port, final int connectTimeoutMillis,
-			final int reconnectionDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
-			final int bufferSize, final SocketOptions socketOptions) {
-		super(name, os, inetAddress, host, port, layout, true, bufferSize);
+	public NettyTcpSocketManager(final String name, final Channel channel, final InetAddress inetAddress,
+			final String host, final int port, final int connectTimeoutMillis, final int reconnectionDelayMillis,
+			final boolean immediateFail, final Layout<? extends Serializable> layout, final int bufferSize,
+			final SocketOptions socketOptions) {
+		super(name, null, inetAddress, host, port, layout, true, bufferSize);
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channel = channel;
@@ -107,7 +110,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				connectTimeoutMillis, reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
 	}
 
-	@SuppressWarnings("sync-override") // synchronization on "this" is done within the method
 	@Override
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
 		if (channel == null) {
@@ -118,42 +120,39 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
 			}
 		}
-		synchronized (this) {
-			try {
-				writeAndFlush(bytes, offset, length, immediateFlush);
-			} catch (final IOException causeEx) {
-				if (retry && reconnector == null) {
-					final String config = inetAddress + ":" + port;
-					reconnector = createReconnector();
-					try {
-						reconnector.reconnect();
-					} catch (final IOException reconnEx) {
-						LOGGER.debug("Cannot reestablish socket connection to {}: {}; starting reconnector thread {}",
-								config, reconnEx.getLocalizedMessage(), reconnector.getName(), reconnEx);
-						reconnector.start();
-						throw new AppenderLoggingException(
-								String.format("Error sending to %s for %s", getName(), config), causeEx);
-					}
-					try {
-						writeAndFlush(bytes, offset, length, immediateFlush);
-					} catch (final IOException e) {
-						throw new AppenderLoggingException(
-								String.format("Error writing to %s after reestablishing connection for %s", getName(),
-										config),
-								causeEx);
-					}
+		try {
+			writeAndFlush(bytes, offset, length);
+		} catch (Exception causeEx) {
+			if (retry && reconnector == null) {
+				final String config = inetAddress + ":" + port;
+				reconnector = createReconnector();
+				try {
+					reconnector.reconnect();
+				} catch (final Exception reconnEx) {
+					LOGGER.debug("Cannot reestablish socket connection to {}: {}; starting reconnector thread {}",
+							config, reconnEx.getLocalizedMessage(), reconnector.getName(), reconnEx);
+					reconnector.start();
+					throw new AppenderLoggingException(String.format("Error sending to %s for %s", getName(), config),
+							causeEx);
+				}
+				try {
+					writeAndFlush(bytes, offset, length);
+				} catch (final Exception e) {
+					throw new AppenderLoggingException(String.format(
+							"Error writing to %s after reestablishing connection for %s", getName(), config), causeEx);
 				}
 			}
 		}
 	}
 
-	private void writeAndFlush(final byte[] bytes, final int offset, final int length, final boolean immediateFlush)
-			throws IOException {
-		@SuppressWarnings("resource") // outputStream is managed by this class
-		final OutputStream outputStream = getOutputStream();
-		outputStream.write(bytes, offset, length);
-		if (immediateFlush) {
-			outputStream.flush();
+	private void writeAndFlush(final byte[] bytes, final int offset, final int length) throws Exception {
+		// Allocate a buffer of the length we plan to write
+		ByteBuf buffer = channel.alloc().buffer(length);
+		try {
+			buffer.writeBytes(bytes, offset, length);
+			channel.writeAndFlush(buffer);
+		} finally {
+			buffer.release();
 		}
 	}
 
@@ -234,7 +233,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					LOGGER.debug("Reconnection interrupted.");
 				} catch (final ConnectException ex) {
 					LOGGER.debug("{}:{} refused connection", host, port);
-				} catch (final IOException ioe) {
+				} catch (final Exception e) {
 					LOGGER.debug("Unable to reconnect to {}:{}", host, port);
 				} finally {
 					latch.countDown();
@@ -242,42 +241,44 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 		}
 
-		void reconnect() throws IOException {
+		void reconnect() throws Exception {
 			List<InetSocketAddress> socketAddresses = FACTORY.resolver.resolveHost(host, port);
 			if (socketAddresses.size() == 1) {
 				LOGGER.debug("Reconnecting " + socketAddresses.get(0));
 				connect(socketAddresses.get(0));
 			} else {
-				IOException ioe = null;
+				Exception ex = null;
 				for (InetSocketAddress socketAddress : socketAddresses) {
 					try {
 						LOGGER.debug("Reconnecting " + socketAddress);
 						connect(socketAddress);
 						return;
-					} catch (IOException ex) {
-						ioe = ex;
+					} catch (Exception e) {
+						ex = e;
 					}
 				}
-				throw ioe;
+				throw ex;
 			}
 		}
 
-		private void connect(InetSocketAddress socketAddress) throws IOException {
-			final Channel sock = createSocket(socketAddress);
-			@SuppressWarnings("resource") // newOS is managed by the enclosing Manager.
-			final OutputStream newOS = sock.getOutputStream();
+		private void connect(InetSocketAddress socketAddress) throws Exception {
+			final Channel ch = createSocket(socketAddress);
 			InetSocketAddress prev = channel != null ? (InetSocketAddress) channel.remoteAddress() : null;
 			synchronized (owner) {
-				Closer.closeSilently(getOutputStream());
-				setOutputStream(newOS);
-				channel = sock;
+				// Close the old channel
+				if (channel.isActive() || channel.isOpen()) {
+					channel.close();
+				}
+				// Set the new channel
+				channel = ch;
 				reconnector = null;
 				shutdown = true;
 			}
-			String type = prev != null && prev.getAddress().getHostAddress().equals(socketAddress.getAddress().getHostAddress())
-					? "reestablished"
-					: "established";
-			LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, socket);
+			String type = prev != null
+					&& prev.getAddress().getHostAddress().equals(socketAddress.getAddress().getHostAddress())
+							? "reestablished"
+							: "established";
+			LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, channel);
 		}
 
 		@Override
@@ -293,24 +294,48 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return recon;
 	}
 
-	protected Channel createSocket(final InetSocketAddress socketAddress) throws IOException {
+	protected Channel createSocket(final InetSocketAddress socketAddress) throws Exception {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
 
 	protected static Channel createSocket(final InetSocketAddress socketAddress, final SocketOptions socketOptions,
-			final int connectTimeoutMillis) throws IOException {
+			final int connectTimeoutMillis) throws Exception {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
-		final Socket newSocket = new Socket();
+		Bootstrap b = new Bootstrap();
+		b.group(workerGroup).channel(NioSocketChannel.class);
 		if (socketOptions != null) {
-			// Not sure which options must be applied before or after the connect() call.
-			socketOptions.apply(newSocket);
+			if (socketOptions.isKeepAlive() != null) {
+				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
+			}
+			// TODO oobInline
+			if (socketOptions.isReuseAddress() != null) {
+				b.option(ChannelOption.SO_REUSEADDR, socketOptions.isReuseAddress());
+			}
+			// TODO performancePreferences
+			if (socketOptions.getReceiveBufferSize() != null) {
+				b.option(ChannelOption.SO_RCVBUF, socketOptions.getReceiveBufferSize());
+			}
+			if (socketOptions.getSoLinger() != null) {
+				b.option(ChannelOption.SO_LINGER, socketOptions.getSoLinger());
+			}
+			if (socketOptions.getSoTimeout() != null) {
+				b.option(ChannelOption.SO_TIMEOUT, socketOptions.getSoTimeout());
+			}
+			if (socketOptions.isTcpNoDelay() != null) {
+				b.option(ChannelOption.TCP_NODELAY, socketOptions.isTcpNoDelay());
+			}
+			final Integer actualTrafficClass = socketOptions.getActualTrafficClass();
+			if (actualTrafficClass != null) {
+				b.option(ChannelOption.IP_TOS, actualTrafficClass);
+			}
 		}
-		newSocket.connect(socketAddress, connectTimeoutMillis);
-		if (socketOptions != null) {
-			// Not sure which options must be applied before or after the connect() call.
-			socketOptions.apply(newSocket);
+		// TODO Set the Netty handler
+		ChannelFuture cf = b.connect(socketAddress.getAddress().getHostAddress(), socketAddress.getPort());
+		boolean completed = cf.await(connectTimeoutMillis);
+		if (completed) {
+			return cf.channel();
 		}
-		return newSocket;
+		return null;
 	}
 
 	/**
@@ -358,11 +383,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		static HostResolver resolver = new HostResolver();
 
-		@SuppressWarnings("resource")
 		@Override
 		public M createManager(final String name, final T data) {
 			InetAddress inetAddress;
-			OutputStream os;
 			try {
 				inetAddress = InetAddress.getByName(data.host);
 			} catch (final UnknownHostException ex) {
@@ -371,41 +394,39 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			Channel channel = null;
 			try {
-				// LOG4J2-1042
 				channel = createSocket(data);
-				os = channel.getOutputStream();
-				return createManager(name, os, channel, inetAddress, data);
-			} catch (final IOException ex) {
+				return createManager(name, channel, inetAddress, data);
+			} catch (final Exception ex) {
 				LOGGER.error("TcpSocketManager ({}) caught exception and will continue:", name, ex, ex);
-				os = NullOutputStream.getInstance();
 			}
 			if (data.reconnectDelayMillis == 0) {
-				Closer.closeSilently(channel);
+				if (channel != null) {
+					channel.close();
+				}
 				return null;
 			}
-			return createManager(name, os, null, inetAddress, data);
+			return createManager(name, null, inetAddress, data);
 		}
 
 		@SuppressWarnings("unchecked")
-		M createManager(final String name, final OutputStream os, final Channel channel, final InetAddress inetAddress,
-				final T data) {
-			return (M) new NettyTcpSocketManager(name, os, channel, inetAddress, data.host, data.port,
+		M createManager(final String name, final Channel channel, final InetAddress inetAddress, final T data) {
+			return (M) new NettyTcpSocketManager(name, channel, inetAddress, data.host, data.port,
 					data.connectTimeoutMillis, data.reconnectDelayMillis, data.immediateFail, data.layout,
 					data.bufferSize, data.socketOptions);
 		}
 
-		Channel createSocket(final T data) throws IOException {
+		Channel createSocket(final T data) throws Exception {
 			List<InetSocketAddress> socketAddresses = resolver.resolveHost(data.host, data.port);
-			IOException ioe = null;
+			Exception e = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
 				try {
 					return NettyTcpSocketManager.createSocket(socketAddress, data.socketOptions,
 							data.connectTimeoutMillis);
-				} catch (IOException ex) {
-					ioe = ex;
+				} catch (Exception ex) {
+					e = ex;
 				}
 			}
-			throw new IOException(errorMessage(data, socketAddresses), ioe);
+			throw new Exception(errorMessage(data, socketAddresses), e);
 		}
 
 		protected String errorMessage(final T data, List<InetSocketAddress> socketAddresses) {
