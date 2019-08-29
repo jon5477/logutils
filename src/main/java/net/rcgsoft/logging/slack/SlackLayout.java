@@ -1,4 +1,4 @@
-package net.rcgsoft.logging;
+package net.rcgsoft.logging.slack;
 
 import java.nio.charset.StandardCharsets;
 
