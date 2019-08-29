@@ -10,6 +10,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.appender.AppenderLoggingException;
@@ -170,7 +173,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		channel = null;
 		if (oldChannel != null) {
 			try {
-				oldChannel.close().sync();
+				oldChannel.close();
 			} catch (final Exception e) {
 				LOGGER.error("Could not close socket {}", channel);
 				return false;
@@ -204,13 +207,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * Handles reconnecting to a Socket on a Thread.
 	 */
 	private class Reconnector extends Log4jThread {
+		private final Lock lock = new ReentrantLock();
 		private final CountDownLatch latch = new CountDownLatch(1);
-		private boolean shutdown = false;
-		private final Object owner;
+		private final AtomicBoolean shutdown = new AtomicBoolean();
 
 		public Reconnector(final OutputStreamManager owner) {
 			super("TcpSocketManager-Reconnector");
-			this.owner = owner;
 		}
 
 		public void latch() {
@@ -222,12 +224,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		public void shutdown() {
-			shutdown = true;
+			shutdown.set(true);
 		}
 
 		@Override
 		public void run() {
-			while (!shutdown) {
+			while (!shutdown.get()) {
 				try {
 					sleep(reconnectionDelayMillis);
 					reconnect();
@@ -265,22 +267,27 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		private void connect(InetSocketAddress socketAddress) throws Exception {
 			final Channel ch = createSocket(socketAddress);
-			InetSocketAddress prev = channel != null ? (InetSocketAddress) channel.remoteAddress() : null;
-			synchronized (owner) {
+			InetSocketAddress prev = NettyTcpSocketManager.this.channel != null
+					? (InetSocketAddress) NettyTcpSocketManager.this.channel.remoteAddress()
+					: null;
+			lock.lock();
+			try {
 				// Close the old channel
-				if (channel.isActive() || channel.isOpen()) {
-					channel.close();
+				if (NettyTcpSocketManager.this.channel.isActive() || NettyTcpSocketManager.this.channel.isOpen()) {
+					NettyTcpSocketManager.this.channel.close();
 				}
 				// Set the new channel
-				channel = ch;
-				reconnector = null;
-				shutdown = true;
+				NettyTcpSocketManager.this.channel = ch;
+				NettyTcpSocketManager.this.reconnector = null;
+			} finally {
+				lock.unlock();
 			}
+			this.shutdown.set(true);
 			String type = prev != null
 					&& prev.getAddress().getHostAddress().equals(socketAddress.getAddress().getHostAddress())
 							? "reestablished"
 							: "established";
-			LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, channel);
+			LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, NettyTcpSocketManager.this.channel);
 		}
 
 		@Override
