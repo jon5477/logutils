@@ -24,6 +24,11 @@
 			<artifactId>httpclient</artifactId>
 			<version>4.5.9</version>
 		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-all</artifactId>
+			<version>4.1.39.Final</version>
+		</dependency>
 		<!-- Annotations -->
 		<dependency>
 			<groupId>com.google.code.findbugs</groupId>
@@ -51,7 +56,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
-		<!--<maven.compiler.release>1.8</maven.compiler.release>-->
+		<!--<maven.compiler.release>8</maven.compiler.release>-->
 		<log4j.version>2.12.1</log4j.version>
 		<error-prone.version>2.3.3</error-prone.version>
 	</properties>

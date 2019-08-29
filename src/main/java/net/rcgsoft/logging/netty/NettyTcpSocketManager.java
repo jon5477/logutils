@@ -25,6 +25,8 @@ import org.apache.logging.log4j.core.util.Log4jThread;
 import org.apache.logging.log4j.core.util.NullOutputStream;
 import org.apache.logging.log4j.util.Strings;
 
+import io.netty.channel.Channel;
+
 /**
  * Manager of TCP Socket connections.
  */
@@ -37,21 +39,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * The default port number of remote logging server (4560).
 	 */
 	private static final int DEFAULT_PORT = 4560;
-
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
-
 	private final int reconnectionDelayMillis;
-
 	private Reconnector reconnector;
-
-	private Socket socket;
-
+	private Channel channel;
 	private final SocketOptions socketOptions;
-
 	private final boolean retry;
-
 	private final boolean immediateFail;
-
 	private final int connectTimeoutMillis;
 
 	/**
@@ -59,7 +53,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 *
 	 * @param name                    The unique name of this connection.
 	 * @param os                      The OutputStream.
-	 * @param socket                  The Socket.
+	 * @param channel                 The Netty {@link Channel}.
 	 * @param inetAddress             The Internet address of the host.
 	 * @param host                    The name of the host.
 	 * @param port                    The port number on the host.
@@ -70,17 +64,17 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param layout                  The Layout.
 	 * @param bufferSize              The buffer size.
 	 */
-	public NettyTcpSocketManager(final String name, final OutputStream os, final Socket socket,
+	public NettyTcpSocketManager(final String name, final OutputStream os, final Channel channel,
 			final InetAddress inetAddress, final String host, final int port, final int connectTimeoutMillis,
 			final int reconnectionDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
 			final int bufferSize, final SocketOptions socketOptions) {
 		super(name, os, inetAddress, host, port, layout, true, bufferSize);
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
-		this.socket = socket;
+		this.channel = channel;
 		this.immediateFail = immediateFail;
 		this.retry = reconnectionDelayMillis > 0;
-		if (socket == null) {
+		if (channel == null) {
 			this.reconnector = createReconnector();
 			this.reconnector.start();
 		}
@@ -116,11 +110,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@SuppressWarnings("sync-override") // synchronization on "this" is done within the method
 	@Override
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
-		if (socket == null) {
+		if (channel == null) {
 			if (reconnector != null && !immediateFail) {
 				reconnector.latch();
 			}
-			if (socket == null) {
+			if (channel == null) {
 				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
 			}
 		}
@@ -171,13 +165,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			reconnector.interrupt();
 			reconnector = null;
 		}
-		final Socket oldSocket = socket;
-		socket = null;
-		if (oldSocket != null) {
+		final Channel oldChannel = channel;
+		channel = null;
+		if (oldChannel != null) {
 			try {
-				oldSocket.close();
-			} catch (final IOException e) {
-				LOGGER.error("Could not close socket {}", socket);
+				oldChannel.close().sync();
+			} catch (final Exception e) {
+				LOGGER.error("Could not close socket {}", channel);
 				return false;
 			}
 		}
@@ -269,18 +263,18 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		private void connect(InetSocketAddress socketAddress) throws IOException {
-			final Socket sock = createSocket(socketAddress);
+			final Channel sock = createSocket(socketAddress);
 			@SuppressWarnings("resource") // newOS is managed by the enclosing Manager.
 			final OutputStream newOS = sock.getOutputStream();
-			InetAddress prev = socket != null ? socket.getInetAddress() : null;
+			InetSocketAddress prev = channel != null ? (InetSocketAddress) channel.remoteAddress() : null;
 			synchronized (owner) {
 				Closer.closeSilently(getOutputStream());
 				setOutputStream(newOS);
-				socket = sock;
+				channel = sock;
 				reconnector = null;
 				shutdown = true;
 			}
-			String type = prev != null && prev.getHostAddress().equals(socketAddress.getAddress().getHostAddress())
+			String type = prev != null && prev.getAddress().getHostAddress().equals(socketAddress.getAddress().getHostAddress())
 					? "reestablished"
 					: "established";
 			LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, socket);
@@ -299,11 +293,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return recon;
 	}
 
-	protected Socket createSocket(final InetSocketAddress socketAddress) throws IOException {
+	protected Channel createSocket(final InetSocketAddress socketAddress) throws IOException {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
 
-	protected static Socket createSocket(final InetSocketAddress socketAddress, final SocketOptions socketOptions,
+	protected static Channel createSocket(final InetSocketAddress socketAddress, final SocketOptions socketOptions,
 			final int connectTimeoutMillis) throws IOException {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		final Socket newSocket = new Socket();
@@ -375,32 +369,32 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				LOGGER.error("Could not find address of {}: {}", data.host, ex, ex);
 				return null;
 			}
-			Socket socket = null;
+			Channel channel = null;
 			try {
 				// LOG4J2-1042
-				socket = createSocket(data);
-				os = socket.getOutputStream();
-				return createManager(name, os, socket, inetAddress, data);
+				channel = createSocket(data);
+				os = channel.getOutputStream();
+				return createManager(name, os, channel, inetAddress, data);
 			} catch (final IOException ex) {
 				LOGGER.error("TcpSocketManager ({}) caught exception and will continue:", name, ex, ex);
 				os = NullOutputStream.getInstance();
 			}
 			if (data.reconnectDelayMillis == 0) {
-				Closer.closeSilently(socket);
+				Closer.closeSilently(channel);
 				return null;
 			}
 			return createManager(name, os, null, inetAddress, data);
 		}
 
 		@SuppressWarnings("unchecked")
-		M createManager(final String name, final OutputStream os, final Socket socket, final InetAddress inetAddress,
+		M createManager(final String name, final OutputStream os, final Channel channel, final InetAddress inetAddress,
 				final T data) {
-			return (M) new NettyTcpSocketManager(name, os, socket, inetAddress, data.host, data.port,
+			return (M) new NettyTcpSocketManager(name, os, channel, inetAddress, data.host, data.port,
 					data.connectTimeoutMillis, data.reconnectDelayMillis, data.immediateFail, data.layout,
 					data.bufferSize, data.socketOptions);
 		}
 
-		Socket createSocket(final T data) throws IOException {
+		Channel createSocket(final T data) throws IOException {
 			List<InetSocketAddress> socketAddresses = resolver.resolveHost(data.host, data.port);
 			IOException ioe = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
@@ -458,20 +452,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	/**
-	 * USE AT YOUR OWN RISK, method is public for testing purpose only for now.
-	 */
-	public SocketOptions getSocketOptions() {
-		return socketOptions;
-	}
-
-	/**
-	 * USE AT YOUR OWN RISK, method is public for testing purpose only for now.
-	 */
-	public Socket getSocket() {
-		return socket;
-	}
-
 	public int getReconnectionDelayMillis() {
 		return reconnectionDelayMillis;
 	}
@@ -479,7 +459,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@Override
 	public String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
-				+ reconnector + ", socket=" + socket + ", socketOptions=" + socketOptions + ", retry=" + retry
+				+ reconnector + ", channel=" + channel + ", socketOptions=" + socketOptions + ", retry=" + retry
 				+ ", immediateFail=" + immediateFail + ", connectTimeoutMillis=" + connectTimeoutMillis
 				+ ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port + ", layout=" + layout
 				+ ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
