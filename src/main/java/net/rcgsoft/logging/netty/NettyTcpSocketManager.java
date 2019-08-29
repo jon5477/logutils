@@ -22,16 +22,19 @@ import org.apache.logging.log4j.util.Strings;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.ReferenceCountUtil;
 
 /**
  * Manager of TCP Socket connections.
@@ -152,12 +155,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private void writeAndFlush(final byte[] bytes, final int offset, final int length) throws Exception {
 		// Allocate a buffer of the length we plan to write
 		ByteBuf buffer = channel.alloc().buffer(length);
-		try {
-			buffer.writeBytes(bytes, offset, length);
-			channel.writeAndFlush(buffer);
-		} finally {
-			buffer.release();
-		}
+		buffer.writeBytes(bytes, offset, length);
+		channel.writeAndFlush(buffer);
 	}
 
 	@Override
@@ -245,7 +244,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		void reconnect() throws Exception {
-			List<InetSocketAddress> socketAddresses = FACTORY.resolver.resolveHost(host, port);
+			List<InetSocketAddress> socketAddresses = NettyTcpSocketManagerFactory.resolver.resolveHost(host, port);
 			if (socketAddresses.size() == 1) {
 				LOGGER.debug("Reconnecting " + socketAddresses.get(0));
 				connect(socketAddresses.get(0));
@@ -305,7 +304,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			final int connectTimeoutMillis) throws Exception {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
-		b.group(workerGroup).channel(NioSocketChannel.class);
+		b.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.ALLOCATOR,
+				PooledByteBufAllocator.DEFAULT);
 		if (socketOptions != null) {
 			if (socketOptions.isKeepAlive() != null) {
 				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
@@ -337,10 +337,17 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			@Override
 			protected void initChannel(SocketChannel ch) throws Exception {
 				ch.pipeline().addLast(new AppenderInboundHandler());
+				ch.pipeline().addLast(new ChannelOutboundHandlerAdapter());
 			}
 		});
 		ChannelFuture cf = b.connect(socketAddress.getAddress().getHostAddress(), socketAddress.getPort());
-		boolean completed = cf.await(connectTimeoutMillis);
+		boolean completed = true;
+		if (connectTimeoutMillis <= 0) {
+			// await indefinitely
+			cf.sync();
+		} else {
+			completed = cf.await(connectTimeoutMillis);
+		}
 		if (completed) {
 			return cf.channel();
 		}
@@ -496,8 +503,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	private static class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
 		@Override
+		public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+			ReferenceCountUtil.release(msg);
+		}
+
+		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-			LOGGER.debug(cause.getMessage(), cause);
+			LOGGER.error(cause.getMessage(), cause);
 		}
 	}
 }
