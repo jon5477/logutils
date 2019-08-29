@@ -56,8 +56,10 @@ public final class SlackAppender extends AbstractAppender {
 		@SuppressWarnings("resource")
 		@Override
 		public SlackAppender build() {
-			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(), getName(), url, verifyHostname);
-			return new SlackAppender(getName(), SlackLayout.createLayout(), getFilter(), isIgnoreExceptions(), httpManager);
+			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(),
+					getName(), url, verifyHostname);
+			return new SlackAppender(getName(), SlackLayout.createLayout(), getFilter(), isIgnoreExceptions(),
+					httpManager);
 		}
 
 		public URL getUrl() {
@@ -136,7 +138,7 @@ public final class SlackAppender extends AbstractAppender {
 
 	private SlackAppender(final String name, final Layout<? extends Serializable> layout, final Filter filter,
 			final boolean ignoreExceptions, final HttpManager manager) {
-		super(name, filter, layout, ignoreExceptions);
+		super(name, filter, layout, ignoreExceptions, Property.EMPTY_ARRAY);
 		Objects.requireNonNull(layout, "layout");
 		this.manager = Objects.requireNonNull(manager, "manager");
 	}
