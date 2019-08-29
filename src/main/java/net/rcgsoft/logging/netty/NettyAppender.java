@@ -26,7 +26,6 @@ import org.apache.logging.log4j.core.net.DatagramSocketManager;
 import org.apache.logging.log4j.core.net.Protocol;
 import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.core.net.SslSocketManager;
-import org.apache.logging.log4j.core.net.TcpSocketManager;
 import org.apache.logging.log4j.core.net.ssl.SslConfiguration;
 
 /**
@@ -259,7 +258,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		}
 		switch (protocol) {
 		case TCP:
-			return TcpSocketManager.getSocketManager(host, port, connectTimeoutMillis, reconnectDelayMillis,
+			return NettyTcpSocketManager.getSocketManager(host, port, connectTimeoutMillis, reconnectDelayMillis,
 					immediateFail, layout, bufferSize, socketOptions);
 		case UDP:
 			return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
