@@ -65,7 +65,7 @@ public class BunyanLayout extends AbstractStringLayout {
 		try {
 			jsonEvent.addProperty("hostname", InetAddress.getLocalHost().getHostName());
 		} catch (UnknownHostException e) {
-			jsonEvent.addProperty("hostname", "unkown");
+			jsonEvent.addProperty("hostname", "unknown");
 		}
 		jsonEvent.addProperty("pid", event.getThreadId());
 		jsonEvent.addProperty("time", formatAsIsoUTCDateTime(event.getTimeMillis()));
