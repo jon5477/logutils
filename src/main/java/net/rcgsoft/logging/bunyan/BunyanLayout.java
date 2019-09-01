@@ -18,7 +18,7 @@ import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.layout.AbstractStringLayout;
-import org.apache.logging.log4j.util.ReadOnlyStringMap;
+import org.apache.logging.log4j.message.Message;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -58,9 +58,11 @@ public class BunyanLayout extends AbstractStringLayout {
 	 * Format the event as a Bunyan style JSON object.
 	 */
 	private String format(LogEvent event) {
-		ReadOnlyStringMap contextData = event.getContextData();
 		JsonObject jsonEvent = new JsonObject();
-		contextData.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+		Message msg = event.getMessage();
+		if (msg instanceof BunyanMessage) {
+			((BunyanMessage) msg).getContext().forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+		}
 		jsonEvent.addProperty("v", 0);
 		jsonEvent.addProperty("level", BUNYAN_LEVEL.get(event.getLevel()));
 		jsonEvent.addProperty("levelStr", event.getLevel().toString());
@@ -72,7 +74,7 @@ public class BunyanLayout extends AbstractStringLayout {
 		}
 		jsonEvent.addProperty("pid", event.getThreadId());
 		jsonEvent.addProperty("time", formatAsIsoUTCDateTime(event.getTimeMillis()));
-		jsonEvent.addProperty("msg", event.getMessage().getFormattedMessage());
+		jsonEvent.addProperty("msg", msg.getFormattedMessage());
 		jsonEvent.addProperty("src", event.getSource().getClassName());
 		if (event.getLevel().isMoreSpecificThan(Level.WARN) && event.getThrown() != null) {
 			JsonObject jsonError = new JsonObject();
