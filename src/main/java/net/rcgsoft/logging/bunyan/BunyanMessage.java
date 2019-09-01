@@ -11,22 +11,6 @@ public class BunyanMessage extends ParameterizedMessage {
 	private static final long serialVersionUID = 1116169611431210422L;
 	private final Map<String, Object> context = new HashMap<>();
 
-	public BunyanMessage(final String messagePattern, final Object[] arguments, final Throwable throwable) {
-		super(messagePattern, arguments, throwable);
-	}
-
-	public BunyanMessage(final String messagePattern, final Object... arguments) {
-		super(messagePattern, arguments);
-	}
-
-	public BunyanMessage(final String messagePattern, final Object arg) {
-		super(messagePattern, arg);
-	}
-
-	public BunyanMessage(final String messagePattern, final Object arg0, final Object arg1) {
-		super(messagePattern, arg0, arg1);
-	}
-
 	public BunyanMessage(final String messagePattern, final Map<String, Object> context, final Object[] arguments,
 			final Throwable throwable) {
 		super(messagePattern, arguments, throwable);
