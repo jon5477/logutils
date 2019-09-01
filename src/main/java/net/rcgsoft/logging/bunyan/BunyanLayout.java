@@ -31,7 +31,7 @@ import com.google.gson.JsonObject;
 @Plugin(name = "BunyanLayout", category = "Core", elementType = "layout", printObject = true)
 public class BunyanLayout extends AbstractStringLayout {
 	private static final Map<Level, Integer> BUNYAN_LEVEL;
-	private static final Gson GSON = new GsonBuilder().create();
+	private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
 	static {
 		BUNYAN_LEVEL = new HashMap<>();
