@@ -61,7 +61,10 @@ public class BunyanLayout extends AbstractStringLayout {
 		JsonObject jsonEvent = new JsonObject();
 		Message msg = event.getMessage();
 		if (msg instanceof BunyanMessage) {
-			((BunyanMessage) msg).getContext().forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+			Map<String, Object> context = ((BunyanMessage) msg).getContext();
+			if (!context.isEmpty()) {
+				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+			}
 		}
 		jsonEvent.addProperty("v", 0);
 		jsonEvent.addProperty("level", BUNYAN_LEVEL.get(event.getLevel()));
