@@ -55,6 +55,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
 	private final int reconnectionDelayMillis;
 	private Reconnector reconnector;
+	private final AtomicBoolean initialized = new AtomicBoolean();
 	private Channel channel;
 	private final SocketOptions socketOptions;
 	private final boolean retry;
@@ -122,6 +123,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	@Override
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
+		initialized.set(true);
 		if (channel == null) {
 			if (reconnector != null && !immediateFail) {
 				reconnector.latch();
@@ -155,11 +157,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private void writeAndFlush(final byte[] bytes, final int offset, final int length) throws Exception {
+	private ChannelFuture writeAndFlush(final byte[] bytes, final int offset, final int length) throws Exception {
 		// Allocate a buffer of the length we plan to write
 		ByteBuf buffer = channel.alloc().buffer(length);
 		buffer.writeBytes(bytes, offset, length);
-		channel.writeAndFlush(buffer);
+		return channel.writeAndFlush(buffer);
 	}
 
 	@Override
@@ -230,6 +232,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		@Override
 		public void run() {
 			while (!shutdown.get()) {
+				if (!initialized.get()) {
+					return;
+				}
 				try {
 					sleep(reconnectionDelayMillis);
 					reconnect();
@@ -415,7 +420,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				LOGGER.error("Could not find address of {}: {}", data.host, ex, ex);
 				return null;
 			}
-			Channel channel = null;
+			/*Channel channel = null;
 			try {
 				channel = createSocket(data);
 				return createManager(name, channel, inetAddress, data);
@@ -427,7 +432,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					channel.close();
 				}
 				return null;
-			}
+			}*/
 			return createManager(name, null, inetAddress, data);
 		}
 
