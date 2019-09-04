@@ -17,24 +17,25 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.layout.AbstractStringLayout;
 import org.apache.logging.log4j.message.Message;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 
+import net.rcgsoft.logging.layout.AbstractJsonLayout;
+import net.rcgsoft.logging.message.ContextualMessage;
+
 /**
  * A Log4j2 Layout which prints events in Node Bunyan JSON format. The layout
  * takes no options and requires no additional configuration.
  */
 @Plugin(name = "BunyanLayout", category = "Core", elementType = "layout", printObject = true)
-public class BunyanLayout extends AbstractStringLayout {
-	private static final Map<Level, Integer> BUNYAN_LEVEL;
+public class BunyanLayout extends AbstractJsonLayout {
+	private static final Map<Level, Integer> BUNYAN_LEVEL = new HashMap<>();
 	private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
 	static {
-		BUNYAN_LEVEL = new HashMap<>();
 		BUNYAN_LEVEL.put(Level.FATAL, 60);
 		BUNYAN_LEVEL.put(Level.ERROR, 50);
 		BUNYAN_LEVEL.put(Level.WARN, 40);
@@ -57,11 +58,19 @@ public class BunyanLayout extends AbstractStringLayout {
 	/**
 	 * Format the event as a Bunyan style JSON object.
 	 */
-	private String format(LogEvent event) {
+	@SuppressWarnings("deprecation")
+	@Override
+	protected final String format(LogEvent event) {
 		JsonObject jsonEvent = new JsonObject();
 		Message msg = event.getMessage();
 		if (msg instanceof BunyanMessage) {
 			Map<String, Object> context = ((BunyanMessage) msg).getContext();
+			if (!context.isEmpty()) {
+				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+			}
+		}
+		if (msg instanceof ContextualMessage) {
+			Map<String, Object> context = ((ContextualMessage) msg).getContext();
 			if (!context.isEmpty()) {
 				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
 			}
@@ -76,9 +85,9 @@ public class BunyanLayout extends AbstractStringLayout {
 			jsonEvent.addProperty("hostname", "unknown");
 		}
 		jsonEvent.addProperty("pid", event.getThreadId());
-		jsonEvent.addProperty("time", formatAsIsoUTCDateTime(event.getTimeMillis()));
-		jsonEvent.addProperty("msg", msg.getFormattedMessage());
-		jsonEvent.addProperty("src", event.getSource().getClassName());
+		jsonEvent.addProperty("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
+		jsonEvent.addProperty("message", msg.getFormattedMessage());
+		jsonEvent.addProperty("source", event.getSource().getClassName());
 		if (event.getLevel().isMoreSpecificThan(Level.WARN) && event.getThrown() != null) {
 			JsonObject jsonError = new JsonObject();
 			Throwable e = event.getThrown();
@@ -96,30 +105,5 @@ public class BunyanLayout extends AbstractStringLayout {
 	private static String formatAsIsoUTCDateTime(long timeStamp) {
 		final Instant instant = Instant.ofEpochMilli(timeStamp);
 		return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT);
-	}
-
-	/**
-	 * This Layout renders JSON objects, hence we use application/json. This is in a
-	 * strict sense untrue, since the entire stream is not proper JSON.
-	 */
-	@Override
-	public String getContentType() {
-		return "application/json";
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public byte[] toByteArray(LogEvent event) {
-		return format(event).getBytes();
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public String toSerializable(LogEvent event) {
-		return format(event);
 	}
 }
