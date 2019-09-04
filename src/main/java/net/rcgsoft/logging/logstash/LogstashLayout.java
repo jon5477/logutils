@@ -20,7 +20,7 @@ import java.nio.charset.Charset;
 import java.util.Map;
 
 /**
- * A Log4j2 Layout which prints events in Node Bunyan JSON format. The layout
+ * A Log4j2 Layout which prints events in Logstash JSON format. The layout
  * takes no options and requires no additional configuration.
  */
 @Plugin(name = "LogstashLayout", category = "Core", elementType = "layout", printObject = true)
