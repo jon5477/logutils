@@ -92,14 +92,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.channelRef.set(channel);
 		this.immediateFail = immediateFail;
 		this.retry = reconnectionDelayMillis > 0;
-//		if (channel == null) {
-//			this.reconnector = createReconnector();
-//			this.reconnector.start(); // If the socket is not initialized by default, then we have to force all the
-//										// threads to block until the socket is ready
-//			this.initialized.set(false);
-//		} else {
-//			this.initialized.set(true);
-//		}
 		this.initialized.set(channel != null);
 		this.socketOptions = socketOptions;
 	}
@@ -486,19 +478,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				LOGGER.error("Could not find address of {}: {}", data.host, ex, ex);
 				return null;
 			}
-//			Channel channel = null;
-//			try {
-//				channel = createSocket(data);
-//				return createManager(name, channel, inetAddress, data);
-//			} catch (final Exception ex) {
-//				LOGGER.error("TcpSocketManager ({}) caught exception and will continue:", name, ex, ex);
-//			}
-//			if (data.reconnectDelayMillis == 0) {
-//				if (channel != null) {
-//					channel.close();
-//				}
-//				return null;
-//			}
 			return createManager(name, null, inetAddress, data);
 		}
 
