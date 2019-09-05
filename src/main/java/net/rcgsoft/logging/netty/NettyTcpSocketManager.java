@@ -59,7 +59,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
 	private final int reconnectionDelayMillis;
 	private Reconnector reconnector;
-	private final AtomicBoolean initialized = new AtomicBoolean();
+	private final AtomicBoolean socketInitialized = new AtomicBoolean();
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
 	private final boolean retry;
@@ -92,7 +92,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.channelRef.set(channel);
 		this.immediateFail = immediateFail;
 		this.retry = reconnectionDelayMillis > 0;
-		this.initialized.set(channel != null);
+		this.socketInitialized.set(channel != null);
 		this.socketOptions = socketOptions;
 	}
 
@@ -129,7 +129,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			if (reconnector != null && !immediateFail) {
 				reconnector.latch();
 			}
-			if (channel == null && initialized.get()) {
+			if (channel == null && socketInitialized.get()) {
 				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
 			}
 		}
@@ -307,7 +307,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				} catch (final Exception e) {
 					LOGGER.debug("Unable to reconnect to {}:{}", host, port);
 				} finally {
-					initialized.set(true);
+					socketInitialized.set(true);
 					latch.countDown();
 				}
 			}
