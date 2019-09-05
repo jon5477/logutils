@@ -326,7 +326,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				} catch (final ConnectException ex) {
 					LOGGER.debug("{}:{} refused connection", host, port);
 				} catch (final Exception e) {
-					LOGGER.debug("Unable to reconnect to {}:{}", host, port);
+					LOGGER.error("Unable to reconnect to {}:{}", host, port, e);
 				} finally {
 					socketInitialized.set(true);
 					latch.countDown();
