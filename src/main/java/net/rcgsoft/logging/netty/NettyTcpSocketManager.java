@@ -284,6 +284,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					ch.writeAndFlush(buf)
 							.addListener(new CheckConnectionListener(bytes, offset, length, immediateFlush));
 				} catch (Exception e) {
+					LOGGER.error("Unable to write message: {}", e.getMessage(), e);
 					addMessage(buf);
 				}
 			} else {
