@@ -58,7 +58,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int DEFAULT_PORT = 4560;
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
 	private final int reconnectionDelayMillis;
-	private Reconnector reconnector;
+	private final AtomicReference<Reconnector> reconnectorRef = new AtomicReference<>();
 	private final AtomicBoolean socketInitialized = new AtomicBoolean();
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
@@ -126,6 +126,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
 		Channel channel = channelRef.get();
 		if (channel == null) {
+			Reconnector reconnector = reconnectorRef.get();
 			if (reconnector != null && !immediateFail) {
 				reconnector.latch();
 			}
@@ -148,9 +149,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	private void handleWriteException(final byte[] bytes, final int offset, final int length,
 			final boolean immediateFlush, Throwable causeEx) {
-		if (retry && reconnector == null) {
+		Reconnector reconnector = reconnectorRef.get();
+		if (retry && reconnectorRef.compareAndSet(null, createReconnector())) {
 			final String config = inetAddress + ":" + port;
-			reconnector = createReconnector();
+			reconnector = reconnectorRef.get(); // Have to grab this after we CAS
 			try {
 				reconnector.reconnect();
 			} catch (final Exception reconnEx) {
@@ -205,6 +207,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	@Override
 	protected boolean closeOutputStream() {
+		Reconnector reconnector = reconnectorRef.get();
 		if (reconnector != null) {
 			reconnector.shutdown();
 			reconnector.interrupt();
@@ -270,9 +273,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		public void addMessage(byte[] bytes, int offset, int length) {
+			ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(length);
 			lock.lock();
 			try {
-				ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(length);
 				buf.writeBytes(bytes, offset, length);
 				messages.add(buf);
 			} finally {
@@ -344,7 +347,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				}
 				// Set the new channel
 				NettyTcpSocketManager.this.channelRef.set(ch);
-				NettyTcpSocketManager.this.reconnector = null;
+				NettyTcpSocketManager.this.reconnectorRef.set(null);
 			} finally {
 				lock.unlock();
 			}
@@ -552,7 +555,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@Override
 	public String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
-				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
+				+ reconnectorRef.get() + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
 				+ retry + ", immediateFail=" + immediateFail + ", connectTimeoutMillis=" + connectTimeoutMillis
 				+ ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port + ", layout=" + layout
 				+ ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
