@@ -272,7 +272,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public void addMessage(byte[] bytes, int offset, int length) {
 			lock.lock();
 			try {
-				ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer();
+				ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(length);
 				buf.writeBytes(bytes, offset, length);
 				messages.add(buf);
 			} finally {
