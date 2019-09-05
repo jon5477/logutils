@@ -1,4 +1,4 @@
-package net.rcgsoft.logging.bunyan;
+package net.rcgsoft.logging.logstash;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -14,33 +14,33 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+import net.rcgsoft.logging.bunyan.BunyanMessage;
 import net.rcgsoft.logging.layout.AbstractJsonLayout;
 import net.rcgsoft.logging.message.ContextualMessage;
 
 /**
- * A Log4j2 Layout which prints events in Node Bunyan JSON format. The layout
- * takes no options and requires no additional configuration.
+ * A Log4j2 Layout which prints events in Logstash JSON format. The layout takes
+ * no options and requires no additional configuration.
  */
-@Plugin(name = "BunyanLayout", category = "Core", elementType = "layout", printObject = true)
-public class BunyanLayout extends AbstractJsonLayout {
-
+@SuppressWarnings("deprecation")
+@Plugin(name = "LogstashLayout", category = "Core", elementType = "layout", printObject = true)
+public class LogstashLayout extends AbstractJsonLayout {
 	@PluginFactory
-	public static BunyanLayout createLayout(@PluginAttribute("locationInfo") boolean locationInfo,
-			@PluginAttribute("properties") boolean properties, @PluginAttribute("complete") boolean complete,
+	public static LogstashLayout createLayout(
 			@PluginAttribute(value = "charset", defaultString = "UTF-8") Charset charset) {
-		return new BunyanLayout(charset);
+		return new LogstashLayout(charset);
 	}
 
-	protected BunyanLayout(Charset charset) {
+	protected LogstashLayout(Charset charset) {
 		super(charset);
 	}
 
 	/**
-	 * Format the event as a Bunyan style JSON object.
+	 * Format the event as a Logstash style JSON object.
 	 */
-	@SuppressWarnings("deprecation")
 	@Override
 	protected final JsonObject formatJson(LogEvent event) {
 		JsonObject jsonEvent = new JsonObject();
@@ -57,11 +57,12 @@ public class BunyanLayout extends AbstractJsonLayout {
 				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
 			}
 
-			jsonEvent.add("tags", listToJsonStringArray(((ContextualMessage) msg).getTags()));
+			JsonArray tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
+			tags.add("bunyan");
+			jsonEvent.add("tags", tags);
 		}
 		jsonEvent.addProperty("v", 0);
 		jsonEvent.addProperty("level", BUNYAN_LEVEL.get(event.getLevel()));
-		jsonEvent.addProperty("levelStr", event.getLevel().toString());
 		jsonEvent.addProperty("name", event.getLoggerName());
 		try {
 			jsonEvent.addProperty("hostname", InetAddress.getLocalHost().getHostName());
@@ -69,9 +70,9 @@ public class BunyanLayout extends AbstractJsonLayout {
 			jsonEvent.addProperty("hostname", "unknown");
 		}
 		jsonEvent.addProperty("pid", event.getThreadId());
-		jsonEvent.addProperty("time", formatAsIsoUTCDateTime(event.getTimeMillis()));
-		jsonEvent.addProperty("msg", msg.getFormattedMessage());
-		jsonEvent.addProperty("src", event.getSource().getClassName());
+		jsonEvent.addProperty("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
+		jsonEvent.addProperty("message", msg.getFormattedMessage());
+		jsonEvent.addProperty("source", event.getSource().getClassName());
 		if (event.getLevel().isMoreSpecificThan(Level.WARN) && event.getThrown() != null) {
 			JsonObject jsonError = new JsonObject();
 			Throwable e = event.getThrown();

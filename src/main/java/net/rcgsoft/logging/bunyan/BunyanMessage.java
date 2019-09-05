@@ -7,6 +7,15 @@ import java.util.Objects;
 
 import org.apache.logging.log4j.message.ParameterizedMessage;
 
+import net.rcgsoft.logging.message.ContextualMessage;
+
+/**
+ * Deprecated. Please use {@link ContextualMessage} instead.
+ * 
+ * @author Jon Huang
+ *
+ */
+@Deprecated
 public class BunyanMessage extends ParameterizedMessage {
 	private static final long serialVersionUID = 1116169611431210422L;
 	private final Map<String, Object> context = new HashMap<>();
