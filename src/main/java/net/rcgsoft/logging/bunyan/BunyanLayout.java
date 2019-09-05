@@ -1,8 +1,12 @@
 package net.rcgsoft.logging.bunyan;
 
-import com.google.gson.JsonObject;
-import net.rcgsoft.logging.layout.AbstractJsonLayout;
-import net.rcgsoft.logging.message.ContextualMessage;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.nio.charset.Charset;
+import java.util.Map;
+
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
@@ -10,12 +14,10 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-import java.nio.charset.Charset;
-import java.util.Map;
+import com.google.gson.JsonObject;
+
+import net.rcgsoft.logging.layout.AbstractJsonLayout;
+import net.rcgsoft.logging.message.ContextualMessage;
 
 /**
  * A Log4j2 Layout which prints events in Node Bunyan JSON format. The layout
@@ -38,6 +40,7 @@ public class BunyanLayout extends AbstractJsonLayout {
 	/**
 	 * Format the event as a Bunyan style JSON object.
 	 */
+	@SuppressWarnings("deprecation")
 	@Override
 	protected final JsonObject formatJson(LogEvent event) {
 		JsonObject jsonEvent = new JsonObject();

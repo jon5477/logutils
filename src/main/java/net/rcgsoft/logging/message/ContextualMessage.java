@@ -46,11 +46,13 @@ public class ContextualMessage extends ParameterizedMessage {
 	}
 
 	public ContextualMessage addTag(String tag) {
+		Objects.requireNonNull(tag, "tag cannot be null");
 		this.tags.add(tag);
 		return this;
 	}
 
 	public ContextualMessage addTags(Collection<String> tags) {
+		Objects.requireNonNull(tags, "tags cannot be null");
 		this.tags.addAll(tags);
 		return this;
 	}

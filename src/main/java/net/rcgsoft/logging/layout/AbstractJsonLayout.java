@@ -1,13 +1,5 @@
 package net.rcgsoft.logging.layout;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.layout.AbstractStringLayout;
-
 import java.nio.charset.Charset;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -16,6 +8,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.layout.AbstractStringLayout;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 
 public abstract class AbstractJsonLayout extends AbstractStringLayout {
 	protected static final Map<Level, Integer> BUNYAN_LEVEL = new HashMap<>();

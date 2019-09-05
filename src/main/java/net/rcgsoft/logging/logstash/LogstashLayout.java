@@ -1,17 +1,5 @@
 package net.rcgsoft.logging.logstash;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import net.rcgsoft.logging.bunyan.BunyanMessage;
-import net.rcgsoft.logging.layout.AbstractJsonLayout;
-import net.rcgsoft.logging.message.ContextualMessage;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.message.Message;
-
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.net.InetAddress;
@@ -19,19 +7,31 @@ import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.util.Map;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
+import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.message.Message;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+
+import net.rcgsoft.logging.bunyan.BunyanMessage;
+import net.rcgsoft.logging.layout.AbstractJsonLayout;
+import net.rcgsoft.logging.message.ContextualMessage;
+
 /**
- * A Log4j2 Layout which prints events in Logstash JSON format. The layout
- * takes no options and requires no additional configuration.
+ * A Log4j2 Layout which prints events in Logstash JSON format. The layout takes
+ * no options and requires no additional configuration.
  */
+@SuppressWarnings("deprecation")
 @Plugin(name = "LogstashLayout", category = "Core", elementType = "layout", printObject = true)
 public class LogstashLayout extends AbstractJsonLayout {
-
 	@PluginFactory
-	public static net.rcgsoft.logging.logstash.LogstashLayout createLayout(@PluginAttribute("locationInfo") boolean locationInfo,
-																		   @PluginAttribute("properties") boolean properties,
-																		   @PluginAttribute("complete") boolean complete,
-																		   @PluginAttribute(value = "charset", defaultString = "UTF-8") Charset charset) {
-		return new net.rcgsoft.logging.logstash.LogstashLayout(charset);
+	public static LogstashLayout createLayout(
+			@PluginAttribute(value = "charset", defaultString = "UTF-8") Charset charset) {
+		return new LogstashLayout(charset);
 	}
 
 	protected LogstashLayout(Charset charset) {
