@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -172,7 +173,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						causeEx);
 			}
 		} else if (reconnector != null) {
-			reconnector.addMessage(bytes, offset, length);
+			reconnector.addMessage(bytes, offset, length, immediateFlush);
 		}
 	}
 
@@ -272,11 +273,28 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			shutdown.set(true);
 		}
 
-		public void addMessage(byte[] bytes, int offset, int length) {
+		public void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
 			ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(length);
+			buf.writeBytes(bytes, offset, length);
+			// Handle the off case when I add a message AFTER the channel has reconnected
+			Channel ch = channelRef.get();
+			if (ch != null && ch.isActive()) {
+				// We reconnected BEFORE this message was added, just perform a flush now
+				try {
+					ch.writeAndFlush(buf)
+							.addListener(new CheckConnectionListener(bytes, offset, length, immediateFlush));
+				} catch (Exception e) {
+					addMessage(buf);
+				}
+			} else {
+				addMessage(buf);
+			}
+		}
+
+		private void addMessage(ByteBuf buf) {
+			Objects.requireNonNull(buf);
 			lock.lock();
 			try {
-				buf.writeBytes(bytes, offset, length);
 				messages.add(buf);
 			} finally {
 				lock.unlock();
@@ -555,10 +573,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@Override
 	public String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
-				+ reconnectorRef.get() + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
-				+ retry + ", immediateFail=" + immediateFail + ", connectTimeoutMillis=" + connectTimeoutMillis
-				+ ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port + ", layout=" + layout
-				+ ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
+				+ reconnectorRef.get() + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions
+				+ ", retry=" + retry + ", immediateFail=" + immediateFail + ", connectTimeoutMillis="
+				+ connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port
+				+ ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
 	}
 
 	private static class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
