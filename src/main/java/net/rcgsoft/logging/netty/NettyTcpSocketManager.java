@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,13 +44,13 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.ReferenceCountUtil;
-import io.netty.util.concurrent.PromiseCombiner;
 
 /**
  * Manager of TCP Socket connections.
  */
 public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final EventLoopGroup workerGroup = new NioEventLoopGroup();
+	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
 	 */
@@ -171,7 +173,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					// We are only creating a future if the current one is null or old one has
 					// completed
 					if (reconFuture == null || reconFuture.isDone()) {
-						reconFuture = workerGroup.submit(reconnector);
+						reconFuture = executor.submit(reconnector);
 					}
 				} finally {
 					mutex.unlock();
