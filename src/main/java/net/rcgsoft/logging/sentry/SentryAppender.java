@@ -114,10 +114,8 @@ public class SentryAppender extends AbstractAppender {
 
     @Override
     public void append(LogEvent logEvent) {
-        System.out.println("sentry got " + logEvent.getMessage());
         // Do not log the event if the current thread is managed by sentry
         if (SentryEnvironment.isManagingThread()) {
-            System.out.println("sentry skipping " + logEvent.getMessage());
             return;
         }
 
