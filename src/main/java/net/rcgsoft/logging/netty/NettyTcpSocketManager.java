@@ -1,14 +1,15 @@
 package net.rcgsoft.logging.netty;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,9 +29,14 @@ import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.util.Strings;
 
+import com.squareup.tape2.ObjectQueue;
+import com.squareup.tape2.ObjectQueue.Converter;
+import com.squareup.tape2.QueueFile;
+
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -40,6 +46,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -91,7 +98,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			final String host, final int port, final int connectTimeoutMillis, final int reconnectionDelayMillis,
 			final boolean immediateFail, final Layout<? extends Serializable> layout, final int bufferSize,
 			final SocketOptions socketOptions) {
-		super(name, null, inetAddress, host, port, layout, true, bufferSize);
+		super(name, null, inetAddress, host, port, layout, true, 0);
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channelRef.set(channel);
@@ -198,7 +205,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	private ChannelFuture writeAndFlush(Channel ch, final byte[] bytes, final int offset, final int length) {
 		// Allocate a buffer of the length we plan to write
-		ByteBuf buffer = ch.alloc().buffer(length);
+		ByteBuf buffer = ch.alloc().buffer(length, length);
 		buffer.writeBytes(bytes, offset, length);
 		return ch.writeAndFlush(buffer);
 	}
@@ -277,7 +284,30 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		private final Lock lock = new ReentrantLock();
 		private final CountDownLatch latch = new CountDownLatch(1);
 		private final AtomicBoolean shutdown = new AtomicBoolean();
-		private final Deque<ByteBuf> messages = new LinkedList<>();
+		private final QueueFile queueFile;
+		private final ObjectQueue<ByteBuf> messages;
+
+		public Reconnector() {
+			try {
+				queueFile = new QueueFile.Builder(new File("netty-log4j2-buf.bin")).build();
+				messages = ObjectQueue.create(queueFile, new Converter<ByteBuf>() {
+					@Override
+					public ByteBuf from(byte[] source) throws IOException {
+						return Unpooled.wrappedBuffer(source);
+					}
+
+					@Override
+					public void toStream(ByteBuf value, OutputStream sink) throws IOException {
+						for (int i = value.readerIndex(), n = value.writerIndex(); i < n; i++) {
+							sink.write(value.getByte(i));
+						}
+						sink.flush();
+					}
+				});
+			} catch (IOException e) {
+				throw new RuntimeException(e.getMessage(), e);
+			}
+		}
 
 		public void latch() {
 			try {
@@ -293,7 +323,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		public void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			ByteBuf buf = PooledByteBufAllocator.DEFAULT.buffer(length);
+			ByteBuf buf = Unpooled.buffer(length, length);
 			buf.writeBytes(bytes, offset, length);
 			// Handle the off case when I add a message AFTER the channel has reconnected
 			Channel ch = channelRef.get();
@@ -304,7 +334,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						// If the write failed to complete, requeue the message since we are
 						// reconnecting
 						if (future.isDone() && !future.isSuccess()) {
-							ByteBuf newbuf = PooledByteBufAllocator.DEFAULT.buffer(length);
+							ByteBuf newbuf = Unpooled.buffer(length, length);
 							newbuf.writeBytes(bytes, offset, length);
 							addMessage(newbuf);
 						}
@@ -323,6 +353,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			lock.lock();
 			try {
 				messages.add(buf);
+			} catch (IOException e) {
+				LOGGER.error("Failed to add message to buffer: {}", e.getMessage(), e);
 			} finally {
 				lock.unlock();
 			}
@@ -345,8 +377,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					try {
 						LOGGER.debug("Flushing {} log messages from queue.", messages.size());
 						for (ByteBuf msg : messages) {
-							ch.writeAndFlush(msg);
+							ch.write(msg, ch.voidPromise());
 						}
+						ch.flush();
 						LOGGER.debug("Successfully flushed {} log messages from queue.", messages.size());
 						messages.clear();
 					} finally {
@@ -416,8 +449,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
 
-	protected static ChannelFuture createSocket(final InetSocketAddress socketAddress, final SocketOptions socketOptions,
-			final int connectTimeoutMillis) throws InterruptedException {
+	protected static ChannelFuture createSocket(final InetSocketAddress socketAddress,
+			final SocketOptions socketOptions, final int connectTimeoutMillis) throws InterruptedException {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.ALLOCATOR,
@@ -431,6 +464,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				b.option(ChannelOption.SO_REUSEADDR, socketOptions.isReuseAddress());
 			}
 			// TODO performancePreferences
+			if (socketOptions.getSendBufferSize() != null) {
+				b.option(ChannelOption.SO_SNDBUF, socketOptions.getSendBufferSize());
+			}
 			if (socketOptions.getReceiveBufferSize() != null) {
 				b.option(ChannelOption.SO_RCVBUF, socketOptions.getReceiveBufferSize());
 			}
@@ -448,6 +484,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				b.option(ChannelOption.IP_TOS, actualTrafficClass);
 			}
 		}
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1 * 1024 * 1024, 2 * 1024 * 1024)); // 1 MB (low) 2 MB (high)
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
@@ -528,8 +565,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			Exception e = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
 				try {
-					return NettyTcpSocketManager.createSocket(socketAddress, data.socketOptions,
-							data.connectTimeoutMillis).syncUninterruptibly().channel();
+					return NettyTcpSocketManager
+							.createSocket(socketAddress, data.socketOptions, data.connectTimeoutMillis)
+							.syncUninterruptibly().channel();
 				} catch (Exception ex) {
 					e = ex;
 				}
