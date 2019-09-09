@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -289,7 +290,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		public Reconnector() {
 			try {
-				queueFile = new QueueFile.Builder(new File("netty-log4j2-buf.bin")).build();
+				UUID uuid = UUID.randomUUID();
+				File bufFile = File.createTempFile("netty-log4j-buf-", uuid.toString() + ".tmp", new File("."));
+				bufFile.deleteOnExit();
+				queueFile = new QueueFile.Builder(bufFile).build();
 				messages = ObjectQueue.create(queueFile, new Converter<ByteBuf>() {
 					@Override
 					public ByteBuf from(byte[] source) throws IOException {
