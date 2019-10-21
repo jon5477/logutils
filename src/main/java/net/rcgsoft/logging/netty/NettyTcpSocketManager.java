@@ -15,8 +15,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,8 +34,8 @@ import com.squareup.tape2.QueueFile;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -52,13 +50,18 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.DefaultEventExecutor;
+import io.netty.util.concurrent.EventExecutor;
 
 /**
  * Manager of TCP Socket connections.
  */
 public class NettyTcpSocketManager extends AbstractSocketManager {
-	private static final EventLoopGroup workerGroup = new NioEventLoopGroup();
-	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+	private static final int MEGABYTE = 1024 * 1024;
+	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
+	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
+	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);	
+	private static final EventExecutor executor = new DefaultEventExecutor();
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
 	 */
@@ -135,6 +138,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				connectTimeoutMillis, reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
 	}
 
+	@SuppressWarnings("sync-override")
 	@Override
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
 		Channel channel = channelRef.get();
@@ -233,6 +237,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
+	@SuppressWarnings("sync-override")
 	@Override
 	protected boolean closeOutputStream() {
 		reconnector.shutdown();
@@ -291,7 +296,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public Reconnector() {
 			try {
 				UUID uuid = UUID.randomUUID();
-				File bufFile = File.createTempFile("netty-log4j-buf-", uuid.toString() + ".tmp", new File("."));
+				File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
 				bufFile.deleteOnExit();
 				queueFile = new QueueFile.Builder(bufFile).build();
 				messages = ObjectQueue.create(queueFile, new Converter<ByteBuf>() {
@@ -381,9 +386,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					try {
 						LOGGER.debug("Flushing {} log messages from queue.", messages.size());
 						for (ByteBuf msg : messages) {
-							ch.write(msg, ch.voidPromise());
+							// Write and flush to the socket
+							ch.writeAndFlush(msg);
 						}
-						ch.flush();
 						LOGGER.debug("Successfully flushed {} log messages from queue.", messages.size());
 						messages.clear();
 					} finally {
@@ -458,7 +463,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.ALLOCATOR,
-				PooledByteBufAllocator.DEFAULT);
+				new UnpooledByteBufAllocator(false));
 		if (socketOptions != null) {
 			if (socketOptions.isKeepAlive() != null) {
 				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
@@ -488,7 +493,21 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				b.option(ChannelOption.IP_TOS, actualTrafficClass);
 			}
 		}
-		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1 * 1024 * 1024, 2 * 1024 * 1024)); // 1 MB (low) 2 MB (high)
+		int lowWaterMark;
+		try {
+			lowWaterMark = Integer.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
+		} catch (NumberFormatException e) {
+			lowWaterMark = DEFAULT_LOW_WATER_MARK;
+			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB", (lowWaterMark / MEGABYTE));
+		}
+		int highWaterMark;
+		try {
+			highWaterMark = Integer.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
+		} catch (NumberFormatException e) {
+			highWaterMark = DEFAULT_HIGH_WATER_MARK;
+			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB", (highWaterMark / MEGABYTE));
+		}
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB (low) 8 MB (high)
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
