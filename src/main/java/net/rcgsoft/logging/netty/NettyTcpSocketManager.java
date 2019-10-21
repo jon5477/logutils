@@ -10,7 +10,6 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,8 +34,8 @@ import com.squareup.tape2.QueueFile;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -51,9 +50,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.ReferenceCountUtil;
-import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
-import io.netty.util.concurrent.EventExecutorGroup;
 
 /**
  * Manager of TCP Socket connections.
@@ -63,7 +61,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
 	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
 	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);	
-	private static final EventExecutorGroup executor = new DefaultEventExecutorGroup(2);
+	private static final EventExecutor executor = new DefaultEventExecutor();
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
 	 */
@@ -187,9 +185,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					// We are only creating a future if the current one is null or old one has
 					// completed
 					if (reconFuture == null || reconFuture.isDone()) {
-						EventExecutor exec = executor.next();
-						reconnector.setEventExecutor(exec);
-						reconFuture = exec.submit(reconnector);
+						reconFuture = executor.submit(reconnector);
 					}
 				} finally {
 					mutex.unlock();
@@ -296,10 +292,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		private final AtomicBoolean shutdown = new AtomicBoolean();
 		private final QueueFile queueFile;
 		private final ObjectQueue<ByteBuf> messages;
-		/**
-		 * The reference to the {@code EventExecutor} executing this {@code Runnable}.
-		 */
-		private EventExecutor exec;
 
 		public Reconnector() {
 			try {
@@ -323,24 +315,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				});
 			} catch (IOException e) {
 				throw new RuntimeException(e.getMessage(), e);
-			}
-		}
-
-		public EventExecutor getEventExecutor() {
-			lock.lock();
-			try {
-				return exec;
-			} finally {
-				lock.unlock();
-			}
-		}
-
-		public void setEventExecutor(EventExecutor exec) {
-			lock.lock();
-			try {
-				this.exec = Objects.requireNonNull(exec, "event executor cannot be null");
-			} finally {
-				lock.unlock();
 			}
 		}
 
@@ -397,11 +371,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		@Override
 		public void run() {
-			// Grab the reference to the current event executor
-			EventExecutor evExec = getEventExecutor();
-			if (evExec == null) {
-				throw new IllegalStateException("event executor not set");
-			}
 			// When this thread is started, default to false
 			shutdown.set(false);
 			// While we're not alerted of a shutdown, keep looping
@@ -416,16 +385,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					lock.lock();
 					try {
 						LOGGER.debug("Flushing {} log messages from queue.", messages.size());
-						for (Iterator<ByteBuf> i = messages.iterator(); i.hasNext();) {
-							// Make sure we are not writing too fast
-							if (!ch.isWritable()) {
-								// Not writable...sleep for a bit
-								Thread.sleep(100);
-							} else {
-								ByteBuf msg = i.next();
-								// Write and flush to the socket
-								ch.writeAndFlush(msg);
-							}
+						for (ByteBuf msg : messages) {
+							// Write and flush to the socket
+							ch.writeAndFlush(msg);
 						}
 						LOGGER.debug("Successfully flushed {} log messages from queue.", messages.size());
 						messages.clear();
@@ -501,7 +463,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.ALLOCATOR,
-				PooledByteBufAllocator.DEFAULT);
+				new UnpooledByteBufAllocator(false));
 		if (socketOptions != null) {
 			if (socketOptions.isKeepAlive() != null) {
 				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
@@ -545,7 +507,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
 			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB", (highWaterMark / MEGABYTE));
 		}
-		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(1 * 1024 * 1024, 2 * 1024 * 1024)); // 1 MB (low) 2 MB (high)
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB (low) 8 MB (high)
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
