@@ -16,8 +16,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -47,14 +45,15 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.ReferenceCountUtil;
-import io.netty.util.concurrent.PromiseCombiner;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.EventExecutorGroup;
 
 /**
  * Manager of TCP Socket connections.
@@ -63,8 +62,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int MEGABYTE = 1024 * 1024;
 	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
 	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
-	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);
-	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);	
+	private static final EventExecutorGroup executor = new DefaultEventExecutorGroup(2);
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
 	 */
@@ -188,7 +187,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					// We are only creating a future if the current one is null or old one has
 					// completed
 					if (reconFuture == null || reconFuture.isDone()) {
-						reconFuture = executor.submit(reconnector);
+						EventExecutor exec = executor.next();
+						reconnector.setEventExecutor(exec);
+						reconFuture = exec.submit(reconnector);
 					}
 				} finally {
 					mutex.unlock();
@@ -295,11 +296,15 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		private final AtomicBoolean shutdown = new AtomicBoolean();
 		private final QueueFile queueFile;
 		private final ObjectQueue<ByteBuf> messages;
+		/**
+		 * The reference to the {@code EventExecutor} executing this {@code Runnable}.
+		 */
+		private EventExecutor exec;
 
 		public Reconnector() {
 			try {
 				UUID uuid = UUID.randomUUID();
-				File bufFile = File.createTempFile("netty-log4j-buf-", uuid.toString() + ".tmp", new File("."));
+				File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
 				bufFile.deleteOnExit();
 				queueFile = new QueueFile.Builder(bufFile).build();
 				messages = ObjectQueue.create(queueFile, new Converter<ByteBuf>() {
@@ -318,6 +323,24 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				});
 			} catch (IOException e) {
 				throw new RuntimeException(e.getMessage(), e);
+			}
+		}
+
+		public EventExecutor getEventExecutor() {
+			lock.lock();
+			try {
+				return exec;
+			} finally {
+				lock.unlock();
+			}
+		}
+
+		public void setEventExecutor(EventExecutor exec) {
+			lock.lock();
+			try {
+				this.exec = Objects.requireNonNull(exec, "event executor cannot be null");
+			} finally {
+				lock.unlock();
 			}
 		}
 
@@ -374,6 +397,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		@Override
 		public void run() {
+			// Grab the reference to the current event executor
+			EventExecutor evExec = getEventExecutor();
+			if (evExec == null) {
+				throw new IllegalStateException("event executor not set");
+			}
 			// When this thread is started, default to false
 			shutdown.set(false);
 			// While we're not alerted of a shutdown, keep looping
@@ -388,21 +416,15 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					lock.lock();
 					try {
 						LOGGER.debug("Flushing {} log messages from queue.", messages.size());
-						PromiseCombiner all = new PromiseCombiner(workerGroup.next());
 						for (Iterator<ByteBuf> i = messages.iterator(); i.hasNext();) {
 							// Make sure we are not writing too fast
 							if (!ch.isWritable()) {
-								// Message is not writable...we need to slow down
-								// Flush the write buffers to make new space for writes
-								ch.flush();
-								// Create an aggregation of all write promises
-								ChannelPromise aggregatePromise = ch.newPromise();
-								all.finish(aggregatePromise);
-								// Wait on all the write promises, once they are complete we can hopefully keep writing again
-								aggregatePromise.await();
+								// Not writable...sleep for a bit
+								Thread.sleep(100);
 							} else {
 								ByteBuf msg = i.next();
-								all.add(ch.write(msg));
+								// Write and flush to the socket
+								ch.writeAndFlush(msg);
 							}
 						}
 						LOGGER.debug("Successfully flushed {} log messages from queue.", messages.size());
