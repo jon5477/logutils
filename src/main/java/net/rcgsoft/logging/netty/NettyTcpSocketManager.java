@@ -60,7 +60,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int MEGABYTE = 1024 * 1024;
 	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
 	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
-	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);	
+	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);
 	private static final EventExecutor executor = new DefaultEventExecutor();
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
@@ -150,16 +150,16 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
 			}
 		}
+		ByteBuf buf = Unpooled.wrappedBuffer(bytes, offset, length);
 		try {
 			Channel ch = channelRef.get();
 			if (ch != null && ch.isActive()) {
-				writeAndFlush(ch, bytes, offset, length)
-						.addListener(new CheckConnectionListener(bytes, offset, length, immediateFlush));
+				writeAndFlush(ch, buf).addListener(new CheckConnectionListener(buf, immediateFlush));
 			} else {
-				handleWriteException(bytes, offset, length, immediateFlush, null);
+				handleWriteException(buf, immediateFlush, null);
 			}
 		} catch (Exception causeEx) {
-			handleWriteException(bytes, offset, length, immediateFlush, causeEx);
+			handleWriteException(buf, immediateFlush, causeEx);
 		}
 	}
 
@@ -172,8 +172,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private void handleWriteException(final byte[] bytes, final int offset, final int length,
-			final boolean immediateFlush, Throwable causeEx) {
+	private void handleWriteException(final ByteBuf buf, final boolean immediateFlush, Throwable causeEx) {
 		if (retry && !isReconnectorRunning()) {
 			final String config = inetAddress + ":" + port;
 			try {
@@ -197,34 +196,29 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			try {
 				Channel ch = channelRef.get();
-				writeAndFlush(ch, bytes, offset, length);
+				writeAndFlush(ch, buf);
 			} catch (final Exception e) {
 				throw new AppenderLoggingException(
 						String.format("Error writing to %s after reestablishing connection for %s", getName(), config),
 						causeEx);
 			}
 		} else {
-			reconnector.addMessage(bytes, offset, length, immediateFlush);
+			reconnector.addMessage(buf, immediateFlush);
 		}
 	}
 
-	private ChannelFuture writeAndFlush(Channel ch, final byte[] bytes, final int offset, final int length) {
+	private ChannelFuture writeAndFlush(Channel ch, ByteBuf buffer) {
+		Objects.requireNonNull(buffer, "buffer cannot be null");
 		// Allocate a buffer of the length we plan to write
-		ByteBuf buffer = ch.alloc().buffer(length, length);
-		buffer.writeBytes(bytes, offset, length);
 		return ch.writeAndFlush(buffer);
 	}
 
 	private class CheckConnectionListener implements ChannelFutureListener {
-		private final byte[] bytes;
-		private final int offset;
-		private final int length;
+		private final ByteBuf buf;
 		private final boolean immediateFlush;
 
-		private CheckConnectionListener(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			this.bytes = bytes;
-			this.offset = offset;
-			this.length = length;
+		private CheckConnectionListener(ByteBuf buf, boolean immediateFlush) {
+			this.buf = Objects.requireNonNull(buf, "buffer cannot be null");
 			this.immediateFlush = immediateFlush;
 		}
 
@@ -232,7 +226,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public void operationComplete(ChannelFuture future) throws Exception {
 			if (!future.isSuccess()) {
 				Throwable t = future.cause();
-				NettyTcpSocketManager.this.handleWriteException(bytes, offset, length, immediateFlush, t);
+				NettyTcpSocketManager.this.handleWriteException(buf, immediateFlush, t);
 			}
 		}
 	}
@@ -313,6 +307,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						sink.flush();
 					}
 				});
+
 			} catch (IOException e) {
 				throw new RuntimeException(e.getMessage(), e);
 			}
@@ -331,9 +326,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			shutdown.set(true);
 		}
 
-		public void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			ByteBuf buf = Unpooled.buffer(length, length);
-			buf.writeBytes(bytes, offset, length);
+		public void addMessage(ByteBuf buf, boolean immediateFlush) {
+			Objects.requireNonNull(buf, "buffer cannot be null");
 			// Handle the off case when I add a message AFTER the channel has reconnected
 			Channel ch = channelRef.get();
 			if (ch != null && ch.isActive()) {
@@ -343,9 +337,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						// If the write failed to complete, requeue the message since we are
 						// reconnecting
 						if (future.isDone() && !future.isSuccess()) {
-							ByteBuf newbuf = Unpooled.buffer(length, length);
-							newbuf.writeBytes(bytes, offset, length);
-							addMessage(newbuf);
+							addMessage(buf);
 						}
 					});
 				} catch (Exception e) {
@@ -358,7 +350,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		private void addMessage(ByteBuf buf) {
-			Objects.requireNonNull(buf);
+			Objects.requireNonNull(buf, "buffer cannot be null");
 			lock.lock();
 			try {
 				messages.add(buf);
@@ -495,19 +487,26 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 		int lowWaterMark;
 		try {
-			lowWaterMark = Integer.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
+			lowWaterMark = Integer
+					.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
 		} catch (NumberFormatException e) {
 			lowWaterMark = DEFAULT_LOW_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB", (lowWaterMark / MEGABYTE));
+			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB",
+					(lowWaterMark / MEGABYTE));
 		}
 		int highWaterMark;
 		try {
-			highWaterMark = Integer.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
+			highWaterMark = Integer
+					.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
 		} catch (NumberFormatException e) {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB", (highWaterMark / MEGABYTE));
+			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB",
+					(highWaterMark / MEGABYTE));
 		}
-		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB (low) 8 MB (high)
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB
+																												// (low)
+																												// 8 MB
+																												// (high)
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
