@@ -209,7 +209,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	private ChannelFuture writeAndFlush(Channel ch, ByteBuf buffer) {
 		Objects.requireNonNull(buffer, "buffer cannot be null");
-		// Allocate a buffer of the length we plan to write
 		return ch.writeAndFlush(buffer);
 	}
 
