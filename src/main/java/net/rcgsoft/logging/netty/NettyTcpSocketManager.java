@@ -2,7 +2,6 @@ package net.rcgsoft.logging.netty;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.ConnectException;
 import java.net.InetAddress;
@@ -28,8 +27,6 @@ import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.util.Strings;
 
-import com.squareup.tape2.ObjectQueue;
-import com.squareup.tape2.ObjectQueue.Converter;
 import com.squareup.tape2.QueueFile;
 
 import io.netty.bootstrap.Bootstrap;
@@ -209,9 +206,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	private ChannelFuture writeAndFlush(Channel ch, final byte[] bytes, final int offset, final int length) {
-		// Allocate a buffer of the length we plan to write
-		ByteBuf buffer = ch.alloc().buffer(length, length);
-		buffer.writeBytes(bytes, offset, length);
+		// Wrap the existing buffer to save memory
+		ByteBuf buffer = Unpooled.wrappedBuffer(bytes, offset, length);
 		return ch.writeAndFlush(buffer);
 	}
 
@@ -291,7 +287,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		private final CountDownLatch latch = new CountDownLatch(1);
 		private final AtomicBoolean shutdown = new AtomicBoolean();
 		private final QueueFile queueFile;
-		private final ObjectQueue<ByteBuf> messages;
 
 		public Reconnector() {
 			try {
@@ -299,20 +294,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
 				bufFile.deleteOnExit();
 				queueFile = new QueueFile.Builder(bufFile).build();
-				messages = ObjectQueue.create(queueFile, new Converter<ByteBuf>() {
-					@Override
-					public ByteBuf from(byte[] source) throws IOException {
-						return Unpooled.wrappedBuffer(source);
-					}
-
-					@Override
-					public void toStream(ByteBuf value, OutputStream sink) throws IOException {
-						for (int i = value.readerIndex(), n = value.writerIndex(); i < n; i++) {
-							sink.write(value.getByte(i));
-						}
-						sink.flush();
-					}
-				});
 			} catch (IOException e) {
 				throw new RuntimeException(e.getMessage(), e);
 			}
@@ -332,36 +313,33 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		public void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			ByteBuf buf = Unpooled.buffer(length, length);
-			buf.writeBytes(bytes, offset, length);
 			// Handle the off case when I add a message AFTER the channel has reconnected
 			Channel ch = channelRef.get();
 			if (ch != null && ch.isActive()) {
 				// We reconnected BEFORE this message was added, just perform a flush now
 				try {
+					ByteBuf buf = Unpooled.wrappedBuffer(bytes, offset, length);
 					ch.writeAndFlush(buf).addListener((ChannelFuture future) -> {
 						// If the write failed to complete, requeue the message since we are
 						// reconnecting
 						if (future.isDone() && !future.isSuccess()) {
-							ByteBuf newbuf = Unpooled.buffer(length, length);
-							newbuf.writeBytes(bytes, offset, length);
-							addMessage(newbuf);
+							addMessage(bytes, offset, length);
 						}
 					});
 				} catch (Exception e) {
 					LOGGER.error("Unable to write message: {}", e.getMessage(), e);
-					addMessage(buf);
+					addMessage(bytes, offset, length);
 				}
 			} else {
-				addMessage(buf);
+				addMessage(bytes, offset, length);
 			}
 		}
 
-		private void addMessage(ByteBuf buf) {
-			Objects.requireNonNull(buf);
+		private void addMessage(byte[] bytes, int offset, int length) {
+			Objects.requireNonNull(bytes, "buffer cannot be null");
 			lock.lock();
 			try {
-				messages.add(buf);
+				queueFile.add(bytes, offset, length);
 			} catch (IOException e) {
 				LOGGER.error("Failed to add message to buffer: {}", e.getMessage(), e);
 			} finally {
@@ -384,13 +362,17 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					Channel ch = cf.channel();
 					lock.lock();
 					try {
-						LOGGER.debug("Flushing {} log messages from queue.", messages.size());
-						for (ByteBuf msg : messages) {
+						int elemCount = queueFile.size();
+						int writeCount = 0;
+						LOGGER.debug("Flushing {} log messages from queue.", elemCount);
+						byte[] bytes;
+						while ((bytes = queueFile.peek()) != null) {
 							// Write and flush to the socket
-							ch.writeAndFlush(msg);
+							ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+							queueFile.remove(); // Remove the element after the write
+							writeCount++;
 						}
-						LOGGER.debug("Successfully flushed {} log messages from queue.", messages.size());
-						messages.clear();
+						LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
 					} finally {
 						lock.unlock();
 					}
