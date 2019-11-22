@@ -367,10 +367,17 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						LOGGER.debug("Flushing {} log messages from queue.", elemCount);
 						byte[] bytes;
 						while ((bytes = queueFile.peek()) != null) {
+							if (!ch.isActive()) {
+								// connection broke, we should stop attempting further writes
+								break;
+							}
 							// Write and flush to the socket
-							ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-							queueFile.remove(); // Remove the element after the write
-							writeCount++;
+							ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+							wf.sync();
+							if (wf.isSuccess()) {
+								queueFile.remove(); // Remove the element after the write
+								writeCount++;
+							}
 						}
 						LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
 					} finally {
