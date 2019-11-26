@@ -57,7 +57,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int MEGABYTE = 1024 * 1024;
 	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
 	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
-	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);	
+	private static final EventLoopGroup workerGroup = new NioEventLoopGroup(2);
 	private static final EventExecutor executor = new DefaultEventExecutor();
 	/**
 	 * The default reconnection delay (1000 milliseconds or 1 second).
@@ -70,8 +70,31 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
 	private final Lock mutex = new ReentrantLock();
 	private final int reconnectionDelayMillis;
+	/**
+	 * The {@code QueueFile} that contains the failed and unwritten messages. This
+	 * queue will be consumed while the connection is active.
+	 */
+	private final QueueFile queueFile;
+	/**
+	 * The {@code Thread} that handles the re-connection process.
+	 */
 	private final Reconnector reconnector = new Reconnector();
+	/**
+	 * The {@code Thread} that handles the writes after the connection is
+	 * re-established.
+	 */
+	private final ReconnectorWriter writer = new ReconnectorWriter();
+	/**
+	 * The reference to the {@code Future} executing the {@code Reconnector}.
+	 */
 	private Future<?> reconFuture;
+	/**
+	 * The reference to the {@code Future} executing the {@code ReconnectorWriter}.
+	 */
+	private Future<?> writerFuture;
+	/**
+	 * {@code boolean} indicating if the socket has been initialized.
+	 */
 	private final AtomicBoolean socketInitialized = new AtomicBoolean();
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
@@ -107,6 +130,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.retry = reconnectionDelayMillis > 0;
 		this.socketInitialized.set(channel != null);
 		this.socketOptions = socketOptions;
+		try {
+			UUID uuid = UUID.randomUUID();
+			File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
+			bufFile.deleteOnExit();
+			queueFile = new QueueFile.Builder(bufFile).build();
+		} catch (IOException e) {
+			throw new RuntimeException(e.getMessage(), e);
+		}
 	}
 
 	/**
@@ -138,18 +169,19 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@SuppressWarnings("sync-override")
 	@Override
 	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
-		Channel channel = channelRef.get();
-		if (channel == null) {
+		Channel ch = channelRef.get();
+		if (ch == null) {
 			if (!immediateFail) {
 				reconnector.latch();
 			}
-			if (channel == null && socketInitialized.get()) {
+			if (ch == null && socketInitialized.get()) {
 				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
 			}
 		}
 		try {
-			Channel ch = channelRef.get();
 			if (ch != null && ch.isActive()) {
+				// Attempt to write the message to the socket, attach a listener to check if the
+				// write has failed or not
 				writeAndFlush(ch, bytes, offset, length)
 						.addListener(new CheckConnectionListener(bytes, offset, length, immediateFlush));
 			} else {
@@ -201,7 +233,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 						causeEx);
 			}
 		} else {
-			reconnector.addMessage(bytes, offset, length, immediateFlush);
+			addMessage(bytes, offset, length, immediateFlush);
 		}
 	}
 
@@ -211,7 +243,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return ch.writeAndFlush(buffer);
 	}
 
-	private class CheckConnectionListener implements ChannelFutureListener {
+	private final class CheckConnectionListener implements ChannelFutureListener {
 		private final byte[] bytes;
 		private final int offset;
 		private final int length;
@@ -279,25 +311,47 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return result;
 	}
 
+	private void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
+		// Handle the off case when I add a message AFTER the channel has reconnected
+		Channel ch = channelRef.get();
+		if (ch != null && ch.isActive()) {
+			// We reconnected BEFORE this message was added, just perform a flush now
+			try {
+				ByteBuf buf = Unpooled.wrappedBuffer(bytes, offset, length);
+				ch.writeAndFlush(buf).addListener((ChannelFuture future) -> {
+					// If the write failed to complete, requeue the message since we are
+					// reconnecting
+					if (future.isDone() && !future.isSuccess()) {
+						addMessage(bytes, offset, length);
+					}
+				});
+			} catch (Exception e) {
+				LOGGER.error("Unable to write message: {}", e.getMessage(), e);
+				addMessage(bytes, offset, length);
+			}
+		} else {
+			addMessage(bytes, offset, length);
+		}
+	}
+
+	private void addMessage(byte[] bytes, int offset, int length) {
+		Objects.requireNonNull(bytes, "buffer cannot be null");
+		mutex.lock();
+		try {
+			queueFile.add(bytes, offset, length);
+		} catch (IOException e) {
+			LOGGER.error("Failed to add message to buffer: {}", e.getMessage(), e);
+		} finally {
+			mutex.unlock();
+		}
+	}
+
 	/**
 	 * Handles reconnecting to a Socket on a Thread.
 	 */
-	private class Reconnector implements Runnable {
-		private final Lock lock = new ReentrantLock();
+	private final class Reconnector implements Runnable {
 		private final CountDownLatch latch = new CountDownLatch(1);
 		private final AtomicBoolean shutdown = new AtomicBoolean();
-		private final QueueFile queueFile;
-
-		public Reconnector() {
-			try {
-				UUID uuid = UUID.randomUUID();
-				File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
-				bufFile.deleteOnExit();
-				queueFile = new QueueFile.Builder(bufFile).build();
-			} catch (IOException e) {
-				throw new RuntimeException(e.getMessage(), e);
-			}
-		}
 
 		public void latch() {
 			try {
@@ -312,41 +366,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			shutdown.set(true);
 		}
 
-		public void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			// Handle the off case when I add a message AFTER the channel has reconnected
-			Channel ch = channelRef.get();
-			if (ch != null && ch.isActive()) {
-				// We reconnected BEFORE this message was added, just perform a flush now
-				try {
-					ByteBuf buf = Unpooled.wrappedBuffer(bytes, offset, length);
-					ch.writeAndFlush(buf).addListener((ChannelFuture future) -> {
-						// If the write failed to complete, requeue the message since we are
-						// reconnecting
-						if (future.isDone() && !future.isSuccess()) {
-							addMessage(bytes, offset, length);
-						}
-					});
-				} catch (Exception e) {
-					LOGGER.error("Unable to write message: {}", e.getMessage(), e);
-					addMessage(bytes, offset, length);
-				}
-			} else {
-				addMessage(bytes, offset, length);
-			}
-		}
-
-		private void addMessage(byte[] bytes, int offset, int length) {
-			Objects.requireNonNull(bytes, "buffer cannot be null");
-			lock.lock();
-			try {
-				queueFile.add(bytes, offset, length);
-			} catch (IOException e) {
-				LOGGER.error("Failed to add message to buffer: {}", e.getMessage(), e);
-			} finally {
-				lock.unlock();
-			}
-		}
-
 		@Override
 		public void run() {
 			// When this thread is started, default to false
@@ -358,30 +377,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					ChannelFuture cf = reconnect();
 					// Wait for the future to complete
 					cf.sync();
-					// Flush out all the queued messages
-					Channel ch = cf.channel();
-					lock.lock();
+					// Start up the writer thread to write the buffered messages
+					mutex.lock();
 					try {
-						int elemCount = queueFile.size();
-						int writeCount = 0;
-						LOGGER.debug("Flushing {} log messages from queue.", elemCount);
-						byte[] bytes;
-						while ((bytes = queueFile.peek()) != null) {
-							if (!ch.isActive()) {
-								// connection broke, we should stop attempting further writes
-								break;
-							}
-							// Write and flush to the socket
-							ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-							wf.sync();
-							if (wf.isSuccess()) {
-								queueFile.remove(); // Remove the element after the write
-								writeCount++;
-							}
+						if (writerFuture == null || writerFuture.isDone()) {
+							writerFuture = executor.submit(writer);
 						}
-						LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
 					} finally {
-						lock.unlock();
+						mutex.unlock();
 					}
 				} catch (final InterruptedException ie) {
 					LOGGER.debug("Reconnection interrupted.");
@@ -443,6 +446,49 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
+	private final class ReconnectorWriter implements Runnable {
+		@Override
+		public void run() {
+			Channel ch = channelRef.get();
+			if (!ch.isActive() || queueFile.isEmpty()) {
+				return;
+			}
+			// Flush out all the queued messages
+			mutex.lock();
+			try {
+				int elemCount = queueFile.size();
+				int writeCount = 0;
+				LOGGER.debug("Flushing {} log messages from queue.", elemCount);
+				byte[] bytes;
+				while ((bytes = queueFile.peek()) != null) {
+					if (!ch.isActive()) {
+						// connection broke, we should stop attempting further writes
+						break;
+					}
+					// Write and flush to the socket
+					ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+					wf.sync();
+					if (wf.isSuccess()) {
+						queueFile.remove(); // Remove the element after the write
+						writeCount++;
+					} else {
+						// we encountered a problem writing, possibly a broken connection so we break
+						// this loop
+						break;
+					}
+				}
+				LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
+			} catch (InterruptedException e) {
+				// interrupted, we just terminate the loop
+				Thread.interrupted(); // mark the thread as interrupted again
+			} catch (IOException e) {
+				throw new AppenderLoggingException(e.getMessage(), e);
+			} finally {
+				mutex.unlock();
+			}
+		}
+	}
+
 	protected ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
@@ -484,19 +530,26 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 		int lowWaterMark;
 		try {
-			lowWaterMark = Integer.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
+			lowWaterMark = Integer
+					.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
 		} catch (NumberFormatException e) {
 			lowWaterMark = DEFAULT_LOW_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB", (lowWaterMark / MEGABYTE));
+			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB",
+					(lowWaterMark / MEGABYTE));
 		}
 		int highWaterMark;
 		try {
-			highWaterMark = Integer.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
+			highWaterMark = Integer
+					.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
 		} catch (NumberFormatException e) {
 			highWaterMark = DEFAULT_HIGH_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB", (highWaterMark / MEGABYTE));
+			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB",
+					(highWaterMark / MEGABYTE));
 		}
-		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB (low) 8 MB (high)
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB
+																												// (low)
+																												// 8 MB
+																												// (high)
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
