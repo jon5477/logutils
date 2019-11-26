@@ -35,7 +35,6 @@ import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
@@ -182,8 +181,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			if (ch != null && ch.isActive()) {
 				// Attempt to write the message to the socket, attach a listener to check if the
 				// write has failed or not
-				writeAndFlush(ch, bytes, offset, length)
-						.addListener(new CheckConnectionListener(bytes, offset, length, immediateFlush));
+				writeAndFlush(ch, bytes, offset, length).addListener((ChannelFuture cf) -> {
+					// if the write failed, add the message back to the queue so we don't lose it
+					if (!cf.isSuccess()) {
+						addMessage(bytes, offset, length, immediateFlush);
+					}
+				});
 			} else {
 				handleWriteException(bytes, offset, length, immediateFlush, null);
 			}
@@ -241,28 +244,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		// Wrap the existing buffer to save memory
 		ByteBuf buffer = Unpooled.wrappedBuffer(bytes, offset, length);
 		return ch.writeAndFlush(buffer);
-	}
-
-	private final class CheckConnectionListener implements ChannelFutureListener {
-		private final byte[] bytes;
-		private final int offset;
-		private final int length;
-		private final boolean immediateFlush;
-
-		private CheckConnectionListener(byte[] bytes, int offset, int length, boolean immediateFlush) {
-			this.bytes = bytes;
-			this.offset = offset;
-			this.length = length;
-			this.immediateFlush = immediateFlush;
-		}
-
-		@Override
-		public void operationComplete(ChannelFuture future) throws Exception {
-			if (!future.isSuccess()) {
-				Throwable t = future.cause();
-				NettyTcpSocketManager.this.handleWriteException(bytes, offset, length, immediateFlush, t);
-			}
-		}
 	}
 
 	@SuppressWarnings("sync-override")
@@ -467,7 +448,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					}
 					// Write and flush to the socket
 					ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-					wf.sync();
+					wf.await();
 					if (wf.isSuccess()) {
 						queueFile.remove(); // Remove the element after the write
 						writeCount++;
