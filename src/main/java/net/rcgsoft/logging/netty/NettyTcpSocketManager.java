@@ -229,7 +229,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			try {
 				Channel ch = channelRef.get();
-				writeAndFlush(ch, bytes, offset, length);
+				writeAndFlush(ch, bytes, offset, length).addListener(cf -> {
+					// if the write failed, add the message back to the queue so we don't lose it
+					if (!cf.isSuccess()) {
+						addMessage(bytes, offset, length, immediateFlush);
+					}
+				});
 			} catch (final Exception e) {
 				throw new AppenderLoggingException(
 						String.format("Error writing to %s after reestablishing connection for %s", getName(), config),
