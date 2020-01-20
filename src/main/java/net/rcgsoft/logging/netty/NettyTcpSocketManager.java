@@ -20,7 +20,6 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.logging.log4j.core.Layout;
-import org.apache.logging.log4j.core.appender.AppenderLoggingException;
 import org.apache.logging.log4j.core.appender.ManagerFactory;
 import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
@@ -70,7 +69,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 */
 	private static final int DEFAULT_PORT = 4560;
 	private static final NettyTcpSocketManagerFactory<NettyTcpSocketManager, FactoryData> FACTORY = new NettyTcpSocketManagerFactory<>();
-	private final Lock mutex = new ReentrantLock();
+	private final Lock queueMutex = new ReentrantLock();
+	private final Lock futureMutex = new ReentrantLock();
 	private final int reconnectionDelayMillis;
 	/**
 	 * The {@code QueueFile} that contains the failed and unwritten messages. This
@@ -167,7 +167,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private final void fireReconnector() {
 		// Check if the reconnector is running (has to be done in a critical section to
 		// avoid race conditions)
-		mutex.lock();
+		futureMutex.lock();
 		try {
 			// reconnector is null OR is no longer running
 			if (reconFuture == null || reconFuture.isDone()) {
@@ -179,7 +179,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				writerFuture = executor.submit(writer);
 			}
 		} finally {
-			mutex.unlock();
+			futureMutex.unlock();
 		}
 	}
 
@@ -272,14 +272,18 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@Override
 	protected boolean closeOutputStream() {
 		reconnector.shutdown();
-		mutex.lock();
+		futureMutex.lock();
 		try {
 			if (reconFuture != null) {
 				reconFuture.cancel(true);
 			}
 			reconFuture = null;
+			if (writerFuture != null) {
+				writerFuture.cancel(true);
+			}
+			writerFuture = null;
 		} finally {
-			mutex.unlock();
+			futureMutex.unlock();
 		}
 		final Channel oldChannel = channelRef.getAndSet(null);
 		if (oldChannel != null) {
@@ -302,13 +306,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 */
 	private final void enqueueMessage(byte[] bytes, int offset, int length) {
 		Objects.requireNonNull(bytes, "buffer cannot be null");
-		mutex.lock();
+		queueMutex.lock();
 		try {
 			queueFile.add(bytes, offset, length);
 		} catch (IOException e) {
 			LOGGER.error("Failed to add message to buffer: {}", e.getMessage(), e);
 		} finally {
-			mutex.unlock();
+			queueMutex.unlock();
 		}
 	}
 
@@ -409,38 +413,40 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			if (!ch.isActive() || queueFile.isEmpty()) {
 				return;
 			}
-			// Flush out all the enqueued messages
-			mutex.lock();
 			try {
-				int elemCount = queueFile.size();
-				int writeCount = 0;
-				LOGGER.debug("Flushing {} log messages from queue.", elemCount);
-				byte[] bytes;
-				while ((bytes = queueFile.peek()) != null) {
-					if (!ch.isActive()) {
-						// connection broke, we should stop attempting further writes
-						break;
+				// Flush out all the enqueued messages
+				queueMutex.lockInterruptibly();
+				try {
+					int elemCount = queueFile.size();
+					int writeCount = 0;
+					LOGGER.debug("Flushing {} log messages from queue.", elemCount);
+					byte[] bytes;
+					while ((bytes = queueFile.peek()) != null) {
+						if (!ch.isActive()) {
+							// connection broke, we should stop attempting further writes
+							break;
+						}
+						// Write and flush to the socket
+						ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+						wf.await();
+						if (wf.isSuccess()) {
+							queueFile.remove(); // Remove the element after the write
+							writeCount++;
+						} else {
+							// we encountered a problem writing, possibly a broken connection so we break
+							// this loop
+							break;
+						}
 					}
-					// Write and flush to the socket
-					ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-					wf.await();
-					if (wf.isSuccess()) {
-						queueFile.remove(); // Remove the element after the write
-						writeCount++;
-					} else {
-						// we encountered a problem writing, possibly a broken connection so we break
-						// this loop
-						break;
-					}
+					LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
+				} catch (IOException e) {
+					LOGGER.error(e.getLocalizedMessage(), e);
+				} finally {
+					queueMutex.unlock();
 				}
-				LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
 			} catch (InterruptedException e) {
 				// interrupted, we just terminate the loop
 				Thread.interrupted(); // mark the thread as interrupted again
-			} catch (IOException e) {
-				throw new AppenderLoggingException(e.getMessage(), e);
-			} finally {
-				mutex.unlock();
 			}
 		}
 	}
