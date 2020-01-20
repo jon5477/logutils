@@ -263,7 +263,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		Objects.requireNonNull(bytes, "bytes buffer cannot be null");
 		return writeAndFlush(ch, bytes, offset, length).addListener(f -> {
 			if (!f.isSuccess()) {
-				handleWriteException(bytes, offset, length, f.cause());
+				handleFailedWrite(bytes, offset, length, f.cause());
 			}
 		});
 	}
@@ -280,6 +280,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		Objects.requireNonNull(bytes, "buffer cannot be null");
 		// the connection was lost, fire up the reconnector
 		fireReconnector();
+		// fire up the writer
+		fireWriter();
 		// enqueue the message to write later
 		enqueueMessage(bytes, offset, length);
 	}
@@ -292,7 +294,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param offset the starting index of the buffer to read from
 	 * @param length the length of bytes to read
 	 */
-	private final void handleWriteException(byte[] bytes, int offset, int length, Throwable cause) {
+	private final void handleFailedWrite(byte[] bytes, int offset, int length, Throwable cause) {
 		Objects.requireNonNull(bytes, "buffer cannot be null");
 		handleFailedWrite(bytes, offset, length);
 		LOGGER.debug("Could not successfully write to socket: {}", cause.getLocalizedMessage(), cause);
@@ -431,13 +433,16 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			if (!ch.isActive()) {
 				return;
 			}
+			boolean shutdown = false;
 			try {
 				// Flush out all the enqueued messages
 				queueMutex.lockInterruptibly();
 				try {
 					int elemCount = queueFile.size();
 					if (elemCount == 0) {
-						// nothing in the queue
+						// nothing in the queue, this is the only legitimate time we should ever
+						// shutdown the writer thread
+						shutdown = true;
 						return;
 					}
 					int writeCount = 0;
@@ -469,6 +474,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			} catch (InterruptedException e) {
 				// interrupted, we just terminate the loop
 				Thread.interrupted(); // mark the thread as interrupted again
+			} finally {
+				if (shutdown) {
+					NettyTcpSocketManager.this.stopWriter();
+				}
 			}
 		}
 	}
