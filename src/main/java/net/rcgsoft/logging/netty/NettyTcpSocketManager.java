@@ -14,7 +14,6 @@ import java.util.Objects;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -176,7 +175,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		try {
 			// writer is null OR is no longer running
 			if (writerFuture == null || writerFuture.isDone()) {
-				writerFuture = executor.submit(writer);
+				writerFuture = executor.scheduleWithFixedDelay(writer, 10, 10, TimeUnit.SECONDS);
 			}
 		} finally {
 			futureMutex.unlock();
@@ -207,8 +206,22 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private final void stopReconnector() {
 		futureMutex.lock();
 		try {
-			if (reconFuture != null && reconFuture.cancel(false)) {
+			if (reconFuture != null && reconFuture.cancel(true)) {
 				reconFuture = null;
+			}
+		} finally {
+			futureMutex.unlock();
+		}
+	}
+
+	/**
+	 * Stops the writer thread if it is running.
+	 */
+	private final void stopWriter() {
+		futureMutex.lock();
+		try {
+			if (writerFuture != null && writerFuture.cancel(true)) {
+				writerFuture = null;
 			}
 		} finally {
 			futureMutex.unlock();
@@ -304,20 +317,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@Override
 	protected boolean closeOutputStream() {
 		this.stopReconnector();
-		writer.shutdown();
-		futureMutex.lock();
-		try {
-			if (reconFuture != null) {
-				reconFuture.cancel(true);
-			}
-			reconFuture = null;
-			if (writerFuture != null) {
-				writerFuture.cancel(true);
-			}
-			writerFuture = null;
-		} finally {
-			futureMutex.unlock();
-		}
+		this.stopWriter();
 		final Channel oldChannel = channelRef.getAndSet(null);
 		if (oldChannel != null) {
 			try {
@@ -424,65 +424,51 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	private final class ReconnectorWriter implements Runnable {
-		private final AtomicBoolean shutdown = new AtomicBoolean();
-
-		private final void shutdown() {
-			shutdown.set(true);
-		}
-
 		@Override
 		public final void run() {
-			// While the thread is not shutdown
-			while (!shutdown.get()) {
-				if (Thread.interrupted()) {
-					// interrupted - used as a signal to abort this thread
-					shutdown.set(true);
-					break;
-				}
-				Channel ch = channelRef.get();
-				// Check if the channel is active
-				if (!ch.isActive()) {
-					return;
-				}
+			Channel ch = channelRef.get();
+			// Check if the channel is active
+			if (!ch.isActive()) {
+				return;
+			}
+			try {
+				// Flush out all the enqueued messages
+				queueMutex.lockInterruptibly();
 				try {
-					// Flush out all the enqueued messages
-					queueMutex.lockInterruptibly();
-					try {
-						int elemCount = queueFile.size();
-						if (elemCount == 0) {
-							// nothing in the queue
-							return;
-						}
-						int writeCount = 0;
-						LOGGER.debug("Flushing {} log messages from queue.", elemCount);
-						byte[] bytes;
-						while ((bytes = queueFile.peek()) != null) {
-							if (!ch.isActive()) {
-								// connection broke, we should stop attempting further writes
-								break;
-							}
-							// Write and flush to the socket
-							ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-							wf.await();
-							if (wf.isSuccess()) {
-								queueFile.remove(); // Remove the element after the write
-								writeCount++;
-							} else {
-								// we encountered a problem writing, possibly a broken connection so we break
-								// this loop
-								break;
-							}
-						}
-						LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
-					} catch (IOException e) {
-						LOGGER.error(e.getLocalizedMessage(), e);
-					} finally {
-						queueMutex.unlock();
+					int elemCount = queueFile.size();
+					if (elemCount == 0) {
+						// nothing in the queue
+						return;
 					}
-				} catch (InterruptedException e) {
-					// interrupted, we just terminate the loop
-					Thread.interrupted(); // mark the thread as interrupted again
+					int writeCount = 0;
+					LOGGER.debug("Flushing {} log messages from queue.", elemCount);
+					byte[] bytes;
+					while ((bytes = queueFile.peek()) != null) {
+						if (!ch.isActive()) {
+							// connection broke, we should stop attempting further writes
+							break;
+						}
+						// Write and flush to the socket
+						ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+						wf.await();
+						if (wf.isSuccess()) {
+							queueFile.remove(); // Remove the element after the write
+							writeCount++;
+						} else {
+							// we encountered a problem writing, possibly a broken connection so we break
+							// this loop
+							break;
+						}
+					}
+					LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
+				} catch (IOException e) {
+					LOGGER.error(e.getLocalizedMessage(), e);
+				} finally {
+					queueMutex.unlock();
 				}
+			} catch (InterruptedException e) {
+				// interrupted, we just terminate the loop
+				Thread.interrupted(); // mark the thread as interrupted again
 			}
 		}
 	}
