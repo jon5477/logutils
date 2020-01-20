@@ -3,7 +3,6 @@ package net.rcgsoft.logging.netty;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -12,9 +11,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -50,7 +49,11 @@ import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
 
 /**
- * Manager of TCP Socket connections.
+ * Netty TCP Socket connection manager and implementation. Allows reconnection
+ * of broken sockets and enqueuing failed writes to disk to be written later.
+ * 
+ * @author Jon Huang
+ *
  */
 public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final int MEGABYTE = 1024 * 1024;
@@ -86,19 +89,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	/**
 	 * The reference to the {@code Future} executing the {@code Reconnector}.
 	 */
-	private Future<?> reconFuture;
+	private ScheduledFuture<?> reconFuture;
 	/**
 	 * The reference to the {@code Future} executing the {@code ReconnectorWriter}.
 	 */
 	private Future<?> writerFuture;
-	/**
-	 * {@code boolean} indicating if the socket has been initialized.
-	 */
-	private final AtomicBoolean socketInitialized = new AtomicBoolean();
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
 	private final boolean retry;
-	private final boolean immediateFail;
 	private final int connectTimeoutMillis;
 
 	/**
@@ -112,8 +110,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param port                    The port number on the host.
 	 * @param connectTimeoutMillis    the connect timeout in milliseconds.
 	 * @param reconnectionDelayMillis Reconnection interval.
-	 * @param immediateFail           True if the write should fail if no socket is
-	 *                                immediately available.
+	 * @param immediateFail           {@code true} if the write should fail if no
+	 *                                socket is immediately available.
 	 * @param layout                  The Layout.
 	 * @param bufferSize              The buffer size.
 	 */
@@ -125,13 +123,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channelRef.set(channel);
-		this.immediateFail = immediateFail;
 		this.retry = reconnectionDelayMillis > 0;
-		this.socketInitialized.set(channel != null);
 		this.socketOptions = socketOptions;
 		try {
-			UUID uuid = UUID.randomUUID();
-			File bufFile = new File("netty-log4j-buf-" + uuid.toString() + ".tmp");
+			File bufFile = new File("netty-log4j-buf-" + name + "-tmp.bin");
 			bufFile.deleteOnExit();
 			queueFile = new QueueFile.Builder(bufFile).build();
 		} catch (IOException e) {
@@ -165,82 +160,109 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				connectTimeoutMillis, reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
 	}
 
-	@SuppressWarnings("sync-override")
-	@Override
-	protected void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
-		Channel ch = channelRef.get();
-		if (ch == null) {
-			if (!immediateFail) {
-				reconnector.latch();
-			}
-			if (ch == null && socketInitialized.get()) {
-				throw new AppenderLoggingException("Error writing to " + getName() + ": socket not available");
-			}
-		}
-		try {
-			if (ch != null && ch.isActive()) {
-				// Attempt to write the message to the socket, attach a listener to check if the
-				// write has failed or not
-				writeAndFlush(ch, bytes, offset, length).addListener((ChannelFuture cf) -> {
-					// if the write failed, add the message back to the queue so we don't lose it
-					if (!cf.isSuccess()) {
-						addMessage(bytes, offset, length, immediateFlush);
-					}
-				});
-			} else {
-				handleWriteException(bytes, offset, length, immediateFlush, null);
-			}
-		} catch (Exception causeEx) {
-			handleWriteException(bytes, offset, length, immediateFlush, causeEx);
-		}
-	}
-
-	private boolean isReconnectorRunning() {
+	/**
+	 * Checks if the reconnector and writer are running and starts them if not
+	 * running.
+	 */
+	private final void fireReconnector() {
+		// Check if the reconnector is running (has to be done in a critical section to
+		// avoid race conditions)
 		mutex.lock();
 		try {
-			return reconFuture != null && !reconFuture.isDone();
+			// reconnector is null OR is no longer running
+			if (reconFuture == null || reconFuture.isDone()) {
+				reconFuture = executor.scheduleAtFixedRate(reconnector, 0, reconnectionDelayMillis,
+						TimeUnit.MILLISECONDS);
+			}
+			// check if the writer is writing
+			if (writerFuture == null || writerFuture.isDone()) {
+				writerFuture = executor.submit(writer);
+			}
 		} finally {
 			mutex.unlock();
 		}
 	}
 
-	private void handleWriteException(final byte[] bytes, final int offset, final int length,
-			final boolean immediateFlush, Throwable causeEx) {
-		if (retry && !isReconnectorRunning()) {
-			final String config = inetAddress + ":" + port;
-			try {
-				reconnector.reconnect().sync();
-			} catch (Exception reconnEx) {
-				// We failed to reconnect, we now need to start the reconnector thread
-				mutex.lock();
-				try {
-					// We are only creating a future if the current one is null or old one has
-					// completed
-					if (reconFuture == null || reconFuture.isDone()) {
-						reconFuture = executor.submit(reconnector);
-					}
-				} finally {
-					mutex.unlock();
-				}
-				LOGGER.debug("Cannot reestablish socket connection to {}: {}; starting reconnector thread", config,
-						reconnEx.getLocalizedMessage(), reconnEx);
-				throw new AppenderLoggingException(String.format("Error sending to %s for %s", getName(), config),
-						causeEx);
-			}
-			try {
-				Channel ch = channelRef.get();
-				writeAndFlush(ch, bytes, offset, length);
-			} catch (final Exception e) {
-				throw new AppenderLoggingException(
-						String.format("Error writing to %s after reestablishing connection for %s", getName(), config),
-						causeEx);
-			}
+	/**
+	 * Performs a write to the underlying socket. If the write is unsuccessful, the
+	 * data will be preserved and persisted to disk. This method call does NOT block
+	 * but does obtain a monitor in cases where the socket is not available and the
+	 * reconnector thread needs to be started.
+	 */
+	@SuppressWarnings("sync-override")
+	@Override
+	protected final void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
+		// Fetch the channel for performing the write
+		Channel ch = channelRef.get();
+		if (ch != null && ch.isActive()) {
+			// check if the channel is active
+			writeToChannel(ch, bytes, offset, length);
 		} else {
-			addMessage(bytes, offset, length, immediateFlush);
+			// cannot write since the channel is null OR no longer active
+			handleFailedWrite(bytes, offset, length);
 		}
 	}
 
-	private ChannelFuture writeAndFlush(Channel ch, final byte[] bytes, final int offset, final int length) {
+	/**
+	 * Writes the following buffer to the {@link Channel} and enqueues the write on
+	 * failure.
+	 * 
+	 * @param ch     the {@link Channel} to write to
+	 * @param bytes  the buffer of bytes to read from
+	 * @param offset the starting index of the buffer to read from
+	 * @param length the length of bytes to read
+	 * @return the {@link ChannelFuture} that contains the status of the write
+	 */
+	private final ChannelFuture writeToChannel(Channel ch, byte[] bytes, int offset, int length) {
+		Objects.requireNonNull(ch, "channel cannot be null");
+		Objects.requireNonNull(bytes, "bytes buffer cannot be null");
+		return writeAndFlush(ch, bytes, offset, length).addListener(f -> {
+			if (!f.isSuccess()) {
+				handleWriteException(bytes, offset, length, f.cause());
+			}
+		});
+	}
+
+	/**
+	 * Handles when a write failure occurs by starting the reconnector thread and
+	 * enqueuing the failed write.
+	 * 
+	 * @param bytes  the buffer of bytes to read from
+	 * @param offset the starting index of the buffer to read from
+	 * @param length the length of bytes to read
+	 */
+	private final void handleFailedWrite(byte[] bytes, final int offset, final int length) {
+		Objects.requireNonNull(bytes, "buffer cannot be null");
+		// the connection was lost, fire up the reconnector
+		fireReconnector();
+		// enqueue the message to write later
+		enqueueMessage(bytes, offset, length);
+	}
+
+	/**
+	 * Handles when a write failure occurs due to an exception. This will also start
+	 * the reconnector thread, enqueue the failed write, and log the exception.
+	 * 
+	 * @param bytes  the buffer of bytes to read from
+	 * @param offset the starting index of the buffer to read from
+	 * @param length the length of bytes to read
+	 */
+	private final void handleWriteException(byte[] bytes, int offset, int length, Throwable cause) {
+		Objects.requireNonNull(bytes, "buffer cannot be null");
+		handleFailedWrite(bytes, offset, length);
+		LOGGER.debug("Could not successfully write to socket: {}", cause.getLocalizedMessage(), cause);
+	}
+
+	/**
+	 * Writes the following buffer to the {@link Channel}.
+	 * 
+	 * @param ch     the {@link Channel} to write to
+	 * @param bytes  the buffer of bytes to read from
+	 * @param offset the starting index of the buffer to read from
+	 * @param length the length of bytes to read
+	 * @return the {@link ChannelFuture} that contains the status of the write
+	 */
+	private final ChannelFuture writeAndFlush(Channel ch, byte[] bytes, int offset, int length) {
 		// Wrap the existing buffer to save memory
 		ByteBuf buffer = Unpooled.wrappedBuffer(bytes, offset, length);
 		return ch.writeAndFlush(buffer);
@@ -271,51 +293,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return true;
 	}
 
-	public int getConnectTimeoutMillis() {
-		return connectTimeoutMillis;
-	}
-
 	/**
-	 * Gets this TcpSocketManager's content format. Specified by:
-	 * <ul>
-	 * <li>Key: "protocol" Value: "tcp"</li>
-	 * <li>Key: "direction" Value: "out"</li>
-	 * </ul>
-	 *
-	 * @return Map of content format keys supporting TcpSocketManager
+	 * Enqueues the provided message buffer to be written later.
+	 * 
+	 * @param bytes  the buffer of bytes
+	 * @param offset the index to start reading from
+	 * @param length the length of bytes to read
 	 */
-	@Override
-	public Map<String, String> getContentFormat() {
-		final Map<String, String> result = new HashMap<>(super.getContentFormat());
-		result.put("protocol", "tcp");
-		result.put("direction", "out");
-		return result;
-	}
-
-	private void addMessage(byte[] bytes, int offset, int length, boolean immediateFlush) {
-		// Handle the off case when I add a message AFTER the channel has reconnected
-		Channel ch = channelRef.get();
-		if (ch != null && ch.isActive()) {
-			// We reconnected BEFORE this message was added, just perform a flush now
-			try {
-				ByteBuf buf = Unpooled.wrappedBuffer(bytes, offset, length);
-				ch.writeAndFlush(buf).addListener((ChannelFuture future) -> {
-					// If the write failed to complete, requeue the message since we are
-					// reconnecting
-					if (future.isDone() && !future.isSuccess()) {
-						addMessage(bytes, offset, length);
-					}
-				});
-			} catch (Exception e) {
-				LOGGER.error("Unable to write message: {}", e.getMessage(), e);
-				addMessage(bytes, offset, length);
-			}
-		} else {
-			addMessage(bytes, offset, length);
-		}
-	}
-
-	private void addMessage(byte[] bytes, int offset, int length) {
+	private final void enqueueMessage(byte[] bytes, int offset, int length) {
 		Objects.requireNonNull(bytes, "buffer cannot be null");
 		mutex.lock();
 		try {
@@ -328,113 +313,103 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	/**
-	 * Handles reconnecting to a Socket on a Thread.
+	 * Gets this TcpSocketManager's content format. Specified by:
+	 * <ul>
+	 * <li>Key: "protocol" Value: "tcp"</li>
+	 * <li>Key: "direction" Value: "out"</li>
+	 * </ul>
+	 *
+	 * @return Map of content format keys supporting TcpSocketManager
+	 */
+	@Override
+	public final Map<String, String> getContentFormat() {
+		final Map<String, String> result = new HashMap<>(super.getContentFormat());
+		result.put("protocol", "tcp");
+		result.put("direction", "out");
+		return result;
+	}
+
+	/**
+	 * Handles reconnecting a {@code Channel} in a {@code Runnable}.
+	 * 
+	 * @author Jon Huang
+	 *
 	 */
 	private final class Reconnector implements Runnable {
-		private final CountDownLatch latch = new CountDownLatch(1);
 		private final AtomicBoolean shutdown = new AtomicBoolean();
-
-		public void latch() {
-			try {
-				latch.await();
-			} catch (final InterruptedException ex) {
-				// Bubble up the interrupted status
-				Thread.currentThread().interrupt();
-			}
-		}
 
 		public void shutdown() {
 			shutdown.set(true);
 		}
 
 		@Override
-		public void run() {
-			// When this thread is started, default to false
-			shutdown.set(false);
-			// While we're not alerted of a shutdown, keep looping
+		public final void run() {
+			// While the thread is not shutdown
 			while (!shutdown.get()) {
+				if (Thread.interrupted()) {
+					// interrupted - used as a signal to abort this thread
+					shutdown.set(true);
+					break;
+				}
 				try {
-					Thread.sleep(reconnectionDelayMillis);
-					ChannelFuture cf = reconnect();
-					// Wait for the future to complete
-					cf.sync();
-					// Start up the writer thread to write the buffered messages
-					mutex.lock();
-					try {
-						if (writerFuture == null || writerFuture.isDone()) {
-							writerFuture = executor.submit(writer);
+					List<InetSocketAddress> resolvedHosts = getResolvedHosts();
+					if (resolvedHosts.size() == 1) {
+						// single host, connect once synchronously
+						ChannelFuture cf = createSocket(resolvedHosts.get(0)).sync();
+						// Check the status of the reconnection
+						if (cf.isSuccess()) {
+							// succesfully reconnected, now we need to abort the reconnector thread
+							shutdown.set(true);
+						} else {
+							Throwable cause = cf.cause();
+							LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
 						}
-					} finally {
-						mutex.unlock();
+					} else {
+						// multiple hosts, try each one synchronously
+						for (InetSocketAddress host : resolvedHosts) {
+							ChannelFuture cf = createSocket(host).sync();
+							// Check the status of the reconnection
+							if (cf.isSuccess()) {
+								// succesfully reconnected, now we need to abort the reconnector thread
+								shutdown.set(true);
+								break;
+							} else {
+								Throwable cause = cf.cause();
+								LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
+							}
+						}
 					}
-				} catch (final InterruptedException ie) {
+				} catch (InterruptedException e) {
+					// interrupted - used as a signal to abort this thread
+					shutdown.set(true);
 					LOGGER.debug("Reconnection interrupted.");
 					Thread.currentThread().interrupt();
-				} catch (final ConnectException ex) {
-					LOGGER.debug("{}:{} refused connection", host, port);
-				} catch (final Exception e) {
-					LOGGER.error("Unable to reconnect to {}:{}", host, port, e);
-				} finally {
-					socketInitialized.set(true);
-					latch.countDown();
+				} catch (UnknownHostException e) {
+					// failed to resolve host, we can try again on the next scheduled time
+					LOGGER.debug("Failed to resolve host: {}", e.getLocalizedMessage(), e);
 				}
 			}
 		}
 
-		ChannelFuture reconnect() throws Exception {
-			List<InetSocketAddress> socketAddresses = NettyTcpSocketManagerFactory.resolver.resolveHost(host, port);
-			if (socketAddresses.size() == 1) {
-				LOGGER.debug("Reconnecting " + socketAddresses.get(0));
-				return connect(socketAddresses.get(0));
-			} else {
-				Exception ex = null;
-				for (InetSocketAddress socketAddress : socketAddresses) {
-					try {
-						LOGGER.debug("Reconnecting " + socketAddress);
-						return connect(socketAddress);
-					} catch (Exception e) {
-						ex = e;
-					}
-				}
-				throw ex;
-			}
-		}
-
-		private ChannelFuture connect(InetSocketAddress socketAddress) throws Exception {
-			ChannelFuture future = createSocket(socketAddress);
-			future.addListener((ChannelFuture cf) -> {
-				if (cf.isSuccess()) {
-					Channel channel = cf.channel();
-					Channel oldChannel = NettyTcpSocketManager.this.channelRef.get();
-					// Close the old channel (if it exists)
-					if (oldChannel != null && (oldChannel.isActive() || oldChannel.isOpen())) {
-						oldChannel.close();
-					}
-					// Set the new channel
-					NettyTcpSocketManager.this.channelRef.set(channel);
-					// When we reconnect, go ahead and terminate the thread
-					this.shutdown.set(true);
-					String type = oldChannel != null ? "reestablished" : "established";
-					LOGGER.debug("Connection to {}:{} {}: {}", host, port, type, channel);
-				}
-			});
-			return future;
+		private final List<InetSocketAddress> getResolvedHosts() throws UnknownHostException {
+			return NettyTcpSocketManagerFactory.resolver.resolveHost(host, port);
 		}
 
 		@Override
-		public String toString() {
-			return "Reconnector [latch=" + latch + ", shutdown=" + shutdown + "]";
+		public final String toString() {
+			return "Reconnector [shutdown=" + shutdown + "]";
 		}
 	}
 
 	private final class ReconnectorWriter implements Runnable {
 		@Override
-		public void run() {
+		public final void run() {
 			Channel ch = channelRef.get();
+			// Check if the channel is active and queue is empty
 			if (!ch.isActive() || queueFile.isEmpty()) {
 				return;
 			}
-			// Flush out all the queued messages
+			// Flush out all the enqueued messages
 			mutex.lock();
 			try {
 				int elemCount = queueFile.size();
@@ -474,7 +449,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
 
-	protected static ChannelFuture createSocket(final InetSocketAddress socketAddress,
+	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
 			final SocketOptions socketOptions, final int connectTimeoutMillis) throws InterruptedException {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
@@ -644,15 +619,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 	}
 
-	/**
-	 * This method is only for unit testing. It is not Thread-safe.
-	 * 
-	 * @param resolver the HostResolver.
-	 */
-	public static void setHostResolver(HostResolver resolver) {
-		NettyTcpSocketManagerFactory.resolver = resolver;
-	}
-
 	public static class HostResolver {
 		public List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
 			InetAddress[] addresses = InetAddress.getAllByName(host);
@@ -672,9 +638,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	public String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
 				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
-				+ retry + ", immediateFail=" + immediateFail + ", connectTimeoutMillis=" + connectTimeoutMillis
-				+ ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port + ", layout=" + layout
-				+ ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
+				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host="
+				+ host + ", port=" + port + ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count
+				+ "]";
 	}
 
 	private static class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
