@@ -25,6 +25,7 @@ import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.util.Strings;
 
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.squareup.tape2.QueueFile;
 
 import io.netty.bootstrap.Bootstrap;
@@ -76,6 +77,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * The {@code QueueFile} that contains the failed and unwritten messages. This
 	 * queue will be consumed while the connection is active.
 	 */
+	@GuardedBy("queueMutex")
 	private final QueueFile queueFile;
 	/**
 	 * The {@code Thread} that handles the re-connection process.
@@ -89,10 +91,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	/**
 	 * The reference to the {@code Future} executing the {@code Reconnector}.
 	 */
+	@GuardedBy("futureMutex")
 	private ScheduledFuture<?> reconFuture;
 	/**
 	 * The reference to the {@code Future} executing the {@code ReconnectorWriter}.
 	 */
+	@GuardedBy("futureMutex")
 	private Future<?> writerFuture;
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
@@ -127,11 +131,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.socketOptions = socketOptions;
 		try {
 			File bufFile = new File("netty-log4j-buf-" + name + "-tmp.bin");
-			bufFile.deleteOnExit();
 			queueFile = new QueueFile.Builder(bufFile).build();
 		} catch (IOException e) {
 			throw new RuntimeException(e.getMessage(), e);
 		}
+		// Start the writer thread even if the queue is empty
+		this.fireWriter();
 	}
 
 	/**
@@ -161,8 +166,25 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	/**
-	 * Checks if the reconnector and writer are running and starts them if not
-	 * running.
+	 * Checks if the writer is running and starts it if it is not running.
+	 */
+	private final void fireWriter() {
+		// Check if the writer thread is running (has
+		// to be done in a critical section to
+		// avoid race conditions)
+		futureMutex.lock();
+		try {
+			// writer is null OR is no longer running
+			if (writerFuture == null || writerFuture.isDone()) {
+				writerFuture = executor.submit(writer);
+			}
+		} finally {
+			futureMutex.unlock();
+		}
+	}
+
+	/**
+	 * Checks if the reconnector is running and starts it if it is not running.
 	 */
 	private final void fireReconnector() {
 		// Check if the reconnector is running (has to be done in a critical section to
@@ -174,9 +196,19 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				reconFuture = executor.scheduleAtFixedRate(reconnector, 0, reconnectionDelayMillis,
 						TimeUnit.MILLISECONDS);
 			}
-			// check if the writer is writing
-			if (writerFuture == null || writerFuture.isDone()) {
-				writerFuture = executor.submit(writer);
+		} finally {
+			futureMutex.unlock();
+		}
+	}
+
+	/**
+	 * Stops the reconnector thread if it is running.
+	 */
+	private final void stopReconnector() {
+		futureMutex.lock();
+		try {
+			if (reconFuture != null && reconFuture.cancel(false)) {
+				reconFuture = null;
 			}
 		} finally {
 			futureMutex.unlock();
@@ -271,7 +303,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	@SuppressWarnings("sync-override")
 	@Override
 	protected boolean closeOutputStream() {
-		reconnector.shutdown();
+		this.stopReconnector();
+		writer.shutdown();
 		futureMutex.lock();
 		try {
 			if (reconFuture != null) {
@@ -340,9 +373,60 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 *
 	 */
 	private final class Reconnector implements Runnable {
+		@Override
+		public final void run() {
+			boolean shutdown = false;
+			try {
+				List<InetSocketAddress> resolvedHosts = getResolvedHosts();
+				if (resolvedHosts.size() == 1) {
+					// single host, connect once synchronously
+					ChannelFuture cf = createSocket(resolvedHosts.get(0)).await();
+					// Check the status of the reconnection
+					if (cf.isSuccess()) {
+						// successfully reconnected, now we need to abort the reconnector thread
+						shutdown = true;
+					} else {
+						Throwable cause = cf.cause();
+						LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
+					}
+				} else {
+					// multiple hosts, try each one synchronously
+					for (InetSocketAddress host : resolvedHosts) {
+						ChannelFuture cf = createSocket(host).sync();
+						// Check the status of the reconnection
+						if (cf.isSuccess()) {
+							// successfully reconnected, now we need to abort the reconnector thread
+							shutdown = true;
+							break;
+						} else {
+							Throwable cause = cf.cause();
+							LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
+						}
+					}
+				}
+			} catch (InterruptedException e) {
+				// interrupted - used as a signal to abort this thread
+				shutdown = true;
+				LOGGER.debug("Reconnection interrupted.");
+				Thread.currentThread().interrupt();
+			} catch (UnknownHostException e) {
+				// failed to resolve host, we can try again on the next scheduled time
+				LOGGER.debug("Failed to resolve host: {}", e.getLocalizedMessage(), e);
+			}
+			if (shutdown) {
+				NettyTcpSocketManager.this.stopReconnector();
+			}
+		}
+
+		private final List<InetSocketAddress> getResolvedHosts() throws UnknownHostException {
+			return NettyTcpSocketManager.resolveHost(host, port);
+		}
+	}
+
+	private final class ReconnectorWriter implements Runnable {
 		private final AtomicBoolean shutdown = new AtomicBoolean();
 
-		public void shutdown() {
+		private final void shutdown() {
 			shutdown.set(true);
 		}
 
@@ -355,103 +439,55 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 					shutdown.set(true);
 					break;
 				}
+				Channel ch = channelRef.get();
+				// Check if the channel is active
+				if (!ch.isActive()) {
+					return;
+				}
 				try {
-					List<InetSocketAddress> resolvedHosts = getResolvedHosts();
-					if (resolvedHosts.size() == 1) {
-						// single host, connect once synchronously
-						ChannelFuture cf = createSocket(resolvedHosts.get(0)).sync();
-						// Check the status of the reconnection
-						if (cf.isSuccess()) {
-							// succesfully reconnected, now we need to abort the reconnector thread
-							shutdown.set(true);
-						} else {
-							Throwable cause = cf.cause();
-							LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
+					// Flush out all the enqueued messages
+					queueMutex.lockInterruptibly();
+					try {
+						int elemCount = queueFile.size();
+						if (elemCount == 0) {
+							// nothing in the queue
+							return;
 						}
-					} else {
-						// multiple hosts, try each one synchronously
-						for (InetSocketAddress host : resolvedHosts) {
-							ChannelFuture cf = createSocket(host).sync();
-							// Check the status of the reconnection
-							if (cf.isSuccess()) {
-								// succesfully reconnected, now we need to abort the reconnector thread
-								shutdown.set(true);
+						int writeCount = 0;
+						LOGGER.debug("Flushing {} log messages from queue.", elemCount);
+						byte[] bytes;
+						while ((bytes = queueFile.peek()) != null) {
+							if (!ch.isActive()) {
+								// connection broke, we should stop attempting further writes
 								break;
+							}
+							// Write and flush to the socket
+							ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
+							wf.await();
+							if (wf.isSuccess()) {
+								queueFile.remove(); // Remove the element after the write
+								writeCount++;
 							} else {
-								Throwable cause = cf.cause();
-								LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
+								// we encountered a problem writing, possibly a broken connection so we break
+								// this loop
+								break;
 							}
 						}
+						LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
+					} catch (IOException e) {
+						LOGGER.error(e.getLocalizedMessage(), e);
+					} finally {
+						queueMutex.unlock();
 					}
 				} catch (InterruptedException e) {
-					// interrupted - used as a signal to abort this thread
-					shutdown.set(true);
-					LOGGER.debug("Reconnection interrupted.");
-					Thread.currentThread().interrupt();
-				} catch (UnknownHostException e) {
-					// failed to resolve host, we can try again on the next scheduled time
-					LOGGER.debug("Failed to resolve host: {}", e.getLocalizedMessage(), e);
+					// interrupted, we just terminate the loop
+					Thread.interrupted(); // mark the thread as interrupted again
 				}
-			}
-		}
-
-		private final List<InetSocketAddress> getResolvedHosts() throws UnknownHostException {
-			return NettyTcpSocketManagerFactory.resolver.resolveHost(host, port);
-		}
-
-		@Override
-		public final String toString() {
-			return "Reconnector [shutdown=" + shutdown + "]";
-		}
-	}
-
-	private final class ReconnectorWriter implements Runnable {
-		@Override
-		public final void run() {
-			Channel ch = channelRef.get();
-			// Check if the channel is active and queue is empty
-			if (!ch.isActive() || queueFile.isEmpty()) {
-				return;
-			}
-			try {
-				// Flush out all the enqueued messages
-				queueMutex.lockInterruptibly();
-				try {
-					int elemCount = queueFile.size();
-					int writeCount = 0;
-					LOGGER.debug("Flushing {} log messages from queue.", elemCount);
-					byte[] bytes;
-					while ((bytes = queueFile.peek()) != null) {
-						if (!ch.isActive()) {
-							// connection broke, we should stop attempting further writes
-							break;
-						}
-						// Write and flush to the socket
-						ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
-						wf.await();
-						if (wf.isSuccess()) {
-							queueFile.remove(); // Remove the element after the write
-							writeCount++;
-						} else {
-							// we encountered a problem writing, possibly a broken connection so we break
-							// this loop
-							break;
-						}
-					}
-					LOGGER.debug("Successfully flushed {} log messages from queue.", writeCount);
-				} catch (IOException e) {
-					LOGGER.error(e.getLocalizedMessage(), e);
-				} finally {
-					queueMutex.unlock();
-				}
-			} catch (InterruptedException e) {
-				// interrupted, we just terminate the loop
-				Thread.interrupted(); // mark the thread as interrupted again
 			}
 		}
 	}
 
-	protected ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
+	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
 	}
 
@@ -565,9 +601,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 */
 	protected static class NettyTcpSocketManagerFactory<M extends NettyTcpSocketManager, T extends FactoryData>
 			implements ManagerFactory<M, T> {
-
-		static HostResolver resolver = new HostResolver();
-
 		@Override
 		public M createManager(final String name, final T data) {
 			InetAddress inetAddress;
@@ -588,7 +621,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 
 		Channel createSocket(final T data) throws Exception {
-			List<InetSocketAddress> socketAddresses = resolver.resolveHost(data.host, data.port);
+			List<InetSocketAddress> socketAddresses = resolveHost(data.host, data.port);
 			Exception e = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
 				try {
@@ -622,34 +655,18 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			return sb.toString();
 		}
-
 	}
 
-	public static class HostResolver {
-		public List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
-			InetAddress[] addresses = InetAddress.getAllByName(host);
-			List<InetSocketAddress> socketAddresses = new ArrayList<>(addresses.length);
-			for (InetAddress address : addresses) {
-				socketAddresses.add(new InetSocketAddress(address, port));
-			}
-			return socketAddresses;
+	private static final List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
+		InetAddress[] addresses = InetAddress.getAllByName(host);
+		List<InetSocketAddress> socketAddresses = new ArrayList<>(addresses.length);
+		for (InetAddress address : addresses) {
+			socketAddresses.add(new InetSocketAddress(address, port));
 		}
+		return socketAddresses;
 	}
 
-	public int getReconnectionDelayMillis() {
-		return reconnectionDelayMillis;
-	}
-
-	@Override
-	public String toString() {
-		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
-				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
-				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host="
-				+ host + ", port=" + port + ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count
-				+ "]";
-	}
-
-	private static class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
+	private static final class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
 		@Override
 		public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 			ReferenceCountUtil.release(msg);
@@ -659,5 +676,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			LOGGER.error(cause.getMessage(), cause);
 		}
+	}
+
+	@Override
+	public final String toString() {
+		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
+				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
+				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host="
+				+ host + ", port=" + port + ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count
+				+ "]";
 	}
 }
