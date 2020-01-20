@@ -24,7 +24,6 @@ import org.apache.logging.log4j.core.net.AbstractSocketManager;
 import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.util.Strings;
 
-import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.squareup.tape2.QueueFile;
 
 import io.netty.bootstrap.Bootstrap;
@@ -76,7 +75,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * The {@code QueueFile} that contains the failed and unwritten messages. This
 	 * queue will be consumed while the connection is active.
 	 */
-	@GuardedBy("queueMutex")
 	private final QueueFile queueFile;
 	/**
 	 * The {@code Thread} that handles the re-connection process.
@@ -90,12 +88,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	/**
 	 * The reference to the {@code Future} executing the {@code Reconnector}.
 	 */
-	@GuardedBy("futureMutex")
 	private ScheduledFuture<?> reconFuture;
 	/**
 	 * The reference to the {@code Future} executing the {@code ReconnectorWriter}.
 	 */
-	@GuardedBy("futureMutex")
 	private Future<?> writerFuture;
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
