@@ -86,7 +86,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * The {@code Thread} that handles the writes after the connection is
 	 * re-established.
 	 */
-	private final ReconnectorWriter writer = new ReconnectorWriter();
+	private final QueueWriter writer = new QueueWriter();
 	/**
 	 * The reference to the {@code Future} executing the {@code Reconnector}.
 	 */
@@ -243,6 +243,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			// check if the channel is active
 			writeToChannel(ch, bytes, offset, length);
 		} else {
+			channelRef.set(null);
 			// cannot write since the channel is null OR no longer active
 			handleFailedWrite(bytes, offset, length);
 		}
@@ -382,11 +383,19 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				List<InetSocketAddress> resolvedHosts = getResolvedHosts();
 				if (resolvedHosts.size() == 1) {
 					// single host, connect once synchronously
-					ChannelFuture cf = createSocket(resolvedHosts.get(0)).await();
+					ChannelFuture cf = createSocket(resolvedHosts.get(0));
+					cf.await();
 					// Check the status of the reconnection
 					if (cf.isSuccess()) {
 						// successfully reconnected, now we need to abort the reconnector thread
-						shutdown = true;
+						Channel ch = cf.channel();
+						if (ch.isActive()) {
+							LOGGER.debug("Successfully connected: {}", cf.channel());
+							channelRef.set(ch);
+							shutdown = true;
+						} else {
+							LOGGER.debug("Failed to connect. Channel not active");
+						}
 					} else {
 						Throwable cause = cf.cause();
 						LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
@@ -394,12 +403,19 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				} else {
 					// multiple hosts, try each one synchronously
 					for (InetSocketAddress host : resolvedHosts) {
-						ChannelFuture cf = createSocket(host).sync();
+						ChannelFuture cf = createSocket(host).await();
 						// Check the status of the reconnection
 						if (cf.isSuccess()) {
 							// successfully reconnected, now we need to abort the reconnector thread
-							shutdown = true;
-							break;
+							Channel ch = cf.channel();
+							if (ch.isActive()) {
+								LOGGER.debug("Successfully connected: {}", cf.channel());
+								channelRef.set(ch);
+								shutdown = true;
+								break;
+							} else {
+								LOGGER.debug("Failed to connect. Channel not active");
+							}
 						} else {
 							Throwable cause = cf.cause();
 							LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
@@ -425,12 +441,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private final class ReconnectorWriter implements Runnable {
+	private final class QueueWriter implements Runnable {
 		@Override
 		public final void run() {
 			Channel ch = channelRef.get();
 			// Check if the channel is active
-			if (!ch.isActive()) {
+			if (ch == null || !ch.isActive()) {
+				channelRef.set(null);
 				return;
 			}
 			boolean shutdown = false;
