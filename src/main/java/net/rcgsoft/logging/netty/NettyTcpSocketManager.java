@@ -141,6 +141,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	/**
 	 * Obtains a NettyTcpSocketManager.
 	 *
+	 * @param name                 The name of the appender
 	 * @param host                 The host to connect to.
 	 * @param port                 The port on the host.
 	 * @param connectTimeoutMillis the connect timeout in milliseconds
@@ -148,9 +149,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param bufferSize           The buffer size.
 	 * @return A TcpSocketManager.
 	 */
-	public static NettyTcpSocketManager getSocketManager(final String host, int port, final int connectTimeoutMillis,
-			int reconnectDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
-			final int bufferSize, final SocketOptions socketOptions) {
+	public static NettyTcpSocketManager getSocketManager(final String name, final String host, int port,
+			final int connectTimeoutMillis, int reconnectDelayMillis, final boolean immediateFail,
+			final Layout<? extends Serializable> layout, final int bufferSize, final SocketOptions socketOptions) {
 		if (Strings.isEmpty(host)) {
 			throw new IllegalArgumentException("A host name is required");
 		}
@@ -160,8 +161,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		if (reconnectDelayMillis == 0) {
 			reconnectDelayMillis = DEFAULT_RECONNECTION_DELAY_MILLIS;
 		}
-		return (NettyTcpSocketManager) getManager("TCP:" + host + ':' + port, new FactoryData(host, port,
-				connectTimeoutMillis, reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
+		return (NettyTcpSocketManager) getManager(name, new FactoryData(host, port, connectTimeoutMillis,
+				reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
 	}
 
 	/**
