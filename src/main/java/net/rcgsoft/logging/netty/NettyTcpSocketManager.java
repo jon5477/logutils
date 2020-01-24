@@ -95,7 +95,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private Future<?> writerFuture;
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
-	private final int bufferSize;
 	private final int bufLowWaterMark;
 	private final int bufHighWaterMark;
 	private final boolean retry;
@@ -127,7 +126,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channelRef.set(channel);
 		this.retry = reconnectionDelayMillis > 0;
-		this.bufferSize = bufferSize;
 		this.bufLowWaterMark = bufLowWaterMark;
 		this.bufHighWaterMark = bufHighWaterMark;
 		this.socketOptions = socketOptions;
@@ -533,9 +531,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			// TODO performancePreferences
 			if (socketOptions.getSendBufferSize() != null) {
+				LOGGER.debug("SO_SNDBUF size: " + socketOptions.getSendBufferSize());
 				b.option(ChannelOption.SO_SNDBUF, socketOptions.getSendBufferSize());
 			}
 			if (socketOptions.getReceiveBufferSize() != null) {
+				LOGGER.debug("SO_RCVBUF size: " + socketOptions.getReceiveBufferSize());
 				b.option(ChannelOption.SO_RCVBUF, socketOptions.getReceiveBufferSize());
 			}
 			if (socketOptions.getSoLinger() != null) {
@@ -554,6 +554,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 		int bufLow = bufLowWaterMark > 0 ? bufLowWaterMark : DEFAULT_LOW_WATER_MARK; // 4 MB (low default)
 		int bufHigh = bufHighWaterMark > 0 ? bufHighWaterMark : DEFAULT_HIGH_WATER_MARK; // 8 MB (high default)
+		LOGGER.debug("WRITE_BUFFER_LOW_WATER_MARK size: " + bufLow);
+		LOGGER.debug("WRITE_BUFFER_HIGH_WATER_MARK size: " + bufHigh);
 		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(bufLow, bufHigh));
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
