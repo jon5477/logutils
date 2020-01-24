@@ -116,11 +116,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param bufLowWaterMark         The buffer low water mark
 	 * @param bufHighWaterMark        The buffer high water mark
 	 * @param socketOptions           The socket options
+	 * @param tapeBufFileName         The tape buffer file name
 	 */
 	public NettyTcpSocketManager(final String name, final Channel channel, final InetAddress inetAddress,
 			final String host, final int port, final int connectTimeoutMillis, final int reconnectionDelayMillis,
 			final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
-			final int bufHighWaterMark, final SocketOptions socketOptions) {
+			final int bufHighWaterMark, final SocketOptions socketOptions, final String tapeBufFileName) {
 		super(name, null, inetAddress, host, port, layout, true, 0);
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
@@ -130,7 +131,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		this.bufHighWaterMark = bufHighWaterMark;
 		this.socketOptions = socketOptions;
 		try {
-			File bufFile = new File("netty-log4j-buf-" + name + "-tmp.bin");
+			File bufFile = new File(tapeBufFileName != null ? tapeBufFileName : "netty-log4j-buf-" + name + "-tmp.bin");
 			queueFile = new QueueFile.Builder(bufFile).build();
 		} catch (IOException e) {
 			throw new RuntimeException(e.getMessage(), e);
@@ -150,12 +151,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param bufferSize           The buffer size.
 	 * @param bufLowWaterMark      The buffer low water mark
 	 * @param bufHighWaterMark     The buffer high water mark
+	 * @param bufFileName          The tape buffer file name
 	 * @return A TcpSocketManager.
 	 */
 	public static NettyTcpSocketManager getSocketManager(final String name, final String host, int port,
 			final int connectTimeoutMillis, int reconnectDelayMillis, final Layout<? extends Serializable> layout,
 			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
-			final SocketOptions socketOptions) {
+			final SocketOptions socketOptions, final String bufFileName) {
 		if (Strings.isEmpty(host)) {
 			throw new IllegalArgumentException("A host name is required");
 		}
@@ -166,7 +168,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			reconnectDelayMillis = DEFAULT_RECONNECTION_DELAY_MILLIS;
 		}
 		return (NettyTcpSocketManager) getManager(name, new FactoryData(host, port, connectTimeoutMillis,
-				reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions), FACTORY);
+				reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName), FACTORY);
 	}
 
 	/**
@@ -531,11 +533,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			}
 			// TODO performancePreferences
 			if (socketOptions.getSendBufferSize() != null) {
-				LOGGER.debug("SO_SNDBUF size: " + socketOptions.getSendBufferSize());
 				b.option(ChannelOption.SO_SNDBUF, socketOptions.getSendBufferSize());
 			}
 			if (socketOptions.getReceiveBufferSize() != null) {
-				LOGGER.debug("SO_RCVBUF size: " + socketOptions.getReceiveBufferSize());
 				b.option(ChannelOption.SO_RCVBUF, socketOptions.getReceiveBufferSize());
 			}
 			if (socketOptions.getSoLinger() != null) {
@@ -581,10 +581,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		protected final int bufLowWaterMark;
 		protected final int bufHighWaterMark;
 		protected final SocketOptions socketOptions;
+		protected final String bufFileName;
 
 		public FactoryData(final String host, final int port, final int connectTimeoutMillis,
 				final int reconnectDelayMillis, final Layout<? extends Serializable> layout, final int bufferSize,
-				final int bufLowWaterMark, final int bufHighWaterMark, final SocketOptions socketOptions) {
+				final int bufLowWaterMark, final int bufHighWaterMark, final SocketOptions socketOptions,
+				final String bufFileName) {
 			this.host = host;
 			this.port = port;
 			this.connectTimeoutMillis = connectTimeoutMillis;
@@ -594,15 +596,15 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			this.bufLowWaterMark = bufLowWaterMark;
 			this.bufHighWaterMark = bufHighWaterMark;
 			this.socketOptions = socketOptions;
+			this.bufFileName = bufFileName;
 		}
 
 		@Override
 		public final String toString() {
-			return "FactoryData [" + (host != null ? "host=" + host + ", " : "") + "port=" + port
-					+ ", connectTimeoutMillis=" + connectTimeoutMillis + ", reconnectDelayMillis="
-					+ reconnectDelayMillis + ", " + (layout != null ? "layout=" + layout + ", " : "") + "bufferSize="
+			return "FactoryData [host=" + host + ", port=" + port + ", connectTimeoutMillis=" + connectTimeoutMillis
+					+ ", reconnectDelayMillis=" + reconnectDelayMillis + ", layout=" + layout + ", bufferSize="
 					+ bufferSize + ", bufLowWaterMark=" + bufLowWaterMark + ", bufHighWaterMark=" + bufHighWaterMark
-					+ ", " + (socketOptions != null ? "socketOptions=" + socketOptions : "") + "]";
+					+ ", socketOptions=" + socketOptions + ", bufFileName=" + bufFileName + "]";
 		}
 	}
 
@@ -630,7 +632,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		M createManager(final String name, final Channel channel, final InetAddress inetAddress, final T data) {
 			return (M) new NettyTcpSocketManager(name, channel, inetAddress, data.host, data.port,
 					data.connectTimeoutMillis, data.reconnectDelayMillis, data.layout, data.bufferSize,
-					data.bufLowWaterMark, data.bufHighWaterMark, data.socketOptions);
+					data.bufLowWaterMark, data.bufHighWaterMark, data.socketOptions, data.bufFileName);
 		}
 
 		Channel createSocket(final T data) throws Exception {

@@ -89,6 +89,9 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		@PluginAliases({ "SslConfig" })
 		private SslConfiguration sslConfiguration;
 
+		@PluginBuilderAttribute
+		private String bufFileName;
+
 		public boolean getAdvertise() {
 			return advertise;
 		}
@@ -167,6 +170,11 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			return asBuilder();
 		}
 
+		public B withBufFileName(final String bufFileName) {
+			this.bufFileName = bufFileName;
+			return asBuilder();
+		}
+
 		public B withSslConfiguration(final SslConfiguration sslConfiguration) {
 			this.sslConfiguration = sslConfiguration;
 			return asBuilder();
@@ -188,6 +196,9 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			return socketOptions;
 		}
 
+		public String getBufFileName() {
+			return bufFileName;
+		}
 	}
 
 	/**
@@ -223,7 +234,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			final AbstractSocketManager manager = NettyAppender.createSocketManager(name, actualProtocol, getHost(),
 					getPort(), getConnectTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
 					getImmediateFail(), layout, getBufferSize(), getBufferLowWaterMark(), getBufferHighWaterMark(),
-					getSocketOptions());
+					getSocketOptions(), getBufFileName());
 			return new NettyAppender(name, layout, getFilter(), manager, isIgnoreExceptions(),
 					!bufferedIo || immediateFlush, getAdvertise() ? getConfiguration().getAdvertiser() : null,
 					getPropertyArray());
@@ -274,7 +285,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			final int port, final int connectTimeoutMillis, final SslConfiguration sslConfig,
 			final int reconnectDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
 			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
-			final SocketOptions socketOptions) {
+			final SocketOptions socketOptions, final String bufFileName) {
 		if (protocol == Protocol.TCP && sslConfig != null) {
 			// Upgrade TCP to SSL if an SSL config is specified.
 			protocol = Protocol.SSL;
@@ -285,7 +296,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		switch (protocol) {
 		case TCP:
 			return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis, reconnectDelayMillis,
-					layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions);
+					layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName);
 		case UDP:
 			return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
 		case SSL:
