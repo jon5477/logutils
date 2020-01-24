@@ -76,6 +76,12 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		@PluginAliases({ "reconnectDelay", "reconnectionDelay", "delayMillis", "reconnectionDelayMillis" })
 		private int reconnectDelayMillis;
 
+		@PluginBuilderAttribute
+		private int bufferLowWaterMark;
+
+		@PluginBuilderAttribute
+		private int bufferHighWaterMark;
+
 		@PluginElement("SocketOptions")
 		private SocketOptions socketOptions;
 
@@ -146,6 +152,16 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			return asBuilder();
 		}
 
+		public B withBufferLowWaterMark(final int bufferLowWaterMark) {
+			this.bufferLowWaterMark = bufferLowWaterMark;
+			return asBuilder();
+		}
+
+		public B withBufferHighWaterMark(final int bufferHighWaterMark) {
+			this.bufferHighWaterMark = bufferHighWaterMark;
+			return asBuilder();
+		}
+
 		public B withSocketOptions(final SocketOptions socketOptions) {
 			this.socketOptions = socketOptions;
 			return asBuilder();
@@ -158,6 +174,14 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 
 		public int getReconnectDelayMillis() {
 			return reconnectDelayMillis;
+		}
+
+		public int getBufferLowWaterMark() {
+			return bufferLowWaterMark;
+		}
+
+		public int getBufferHighWaterMark() {
+			return bufferHighWaterMark;
 		}
 
 		public SocketOptions getSocketOptions() {
@@ -198,7 +222,8 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			}
 			final AbstractSocketManager manager = NettyAppender.createSocketManager(name, actualProtocol, getHost(),
 					getPort(), getConnectTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
-					getImmediateFail(), layout, getBufferSize(), getSocketOptions());
+					getImmediateFail(), layout, getBufferSize(), getBufferLowWaterMark(), getBufferHighWaterMark(),
+					getSocketOptions());
 			return new NettyAppender(name, layout, getFilter(), manager, isIgnoreExceptions(),
 					!bufferedIo || immediateFlush, getAdvertise() ? getConfiguration().getAdvertiser() : null,
 					getPropertyArray());
@@ -248,7 +273,8 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	protected static AbstractSocketManager createSocketManager(final String name, Protocol protocol, final String host,
 			final int port, final int connectTimeoutMillis, final SslConfiguration sslConfig,
 			final int reconnectDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
-			final int bufferSize, final SocketOptions socketOptions) {
+			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
+			final SocketOptions socketOptions) {
 		if (protocol == Protocol.TCP && sslConfig != null) {
 			// Upgrade TCP to SSL if an SSL config is specified.
 			protocol = Protocol.SSL;
@@ -259,7 +285,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		switch (protocol) {
 		case TCP:
 			return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis, reconnectDelayMillis,
-					immediateFail, layout, bufferSize, socketOptions);
+					layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions);
 		case UDP:
 			return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
 		case SSL:

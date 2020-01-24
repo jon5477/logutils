@@ -95,6 +95,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private Future<?> writerFuture;
 	private final AtomicReference<Channel> channelRef = new AtomicReference<>();
 	private final SocketOptions socketOptions;
+	private final int bufferSize;
+	private final int bufLowWaterMark;
+	private final int bufHighWaterMark;
 	private final boolean retry;
 	private final int connectTimeoutMillis;
 
@@ -109,20 +112,24 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param port                    The port number on the host.
 	 * @param connectTimeoutMillis    the connect timeout in milliseconds.
 	 * @param reconnectionDelayMillis Reconnection interval.
-	 * @param immediateFail           {@code true} if the write should fail if no
-	 *                                socket is immediately available.
 	 * @param layout                  The Layout.
 	 * @param bufferSize              The buffer size.
+	 * @param bufLowWaterMark         The buffer low water mark
+	 * @param bufHighWaterMark        The buffer high water mark
+	 * @param socketOptions           The socket options
 	 */
 	public NettyTcpSocketManager(final String name, final Channel channel, final InetAddress inetAddress,
 			final String host, final int port, final int connectTimeoutMillis, final int reconnectionDelayMillis,
-			final boolean immediateFail, final Layout<? extends Serializable> layout, final int bufferSize,
-			final SocketOptions socketOptions) {
+			final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
+			final int bufHighWaterMark, final SocketOptions socketOptions) {
 		super(name, null, inetAddress, host, port, layout, true, 0);
 		this.connectTimeoutMillis = connectTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channelRef.set(channel);
 		this.retry = reconnectionDelayMillis > 0;
+		this.bufferSize = bufferSize;
+		this.bufLowWaterMark = bufLowWaterMark;
+		this.bufHighWaterMark = bufHighWaterMark;
 		this.socketOptions = socketOptions;
 		try {
 			File bufFile = new File("netty-log4j-buf-" + name + "-tmp.bin");
@@ -143,11 +150,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param connectTimeoutMillis the connect timeout in milliseconds
 	 * @param reconnectDelayMillis The interval to pause between retries.
 	 * @param bufferSize           The buffer size.
+	 * @param bufLowWaterMark      The buffer low water mark
+	 * @param bufHighWaterMark     The buffer high water mark
 	 * @return A TcpSocketManager.
 	 */
 	public static NettyTcpSocketManager getSocketManager(final String name, final String host, int port,
-			final int connectTimeoutMillis, int reconnectDelayMillis, final boolean immediateFail,
-			final Layout<? extends Serializable> layout, final int bufferSize, final SocketOptions socketOptions) {
+			final int connectTimeoutMillis, int reconnectDelayMillis, final Layout<? extends Serializable> layout,
+			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
+			final SocketOptions socketOptions) {
 		if (Strings.isEmpty(host)) {
 			throw new IllegalArgumentException("A host name is required");
 		}
@@ -158,7 +168,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			reconnectDelayMillis = DEFAULT_RECONNECTION_DELAY_MILLIS;
 		}
 		return (NettyTcpSocketManager) getManager(name, new FactoryData(host, port, connectTimeoutMillis,
-				reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions), FACTORY);
+				reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions), FACTORY);
 	}
 
 	/**
@@ -282,6 +292,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		fireWriter();
 		// enqueue the message to write later
 		enqueueMessage(bytes, offset, length);
+		LOGGER.debug("Added failed write to queue.");
 	}
 
 	/**
@@ -467,6 +478,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 							// connection broke, we should stop attempting further writes
 							break;
 						}
+						if (!ch.isWritable()) {
+							// this indicates the write buffer is filling up, we need to back off
+							break;
+						}
 						// Write and flush to the socket
 						ChannelFuture wf = ch.writeAndFlush(Unpooled.wrappedBuffer(bytes));
 						wf.await();
@@ -497,15 +512,17 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
-		return createSocket(socketAddress, socketOptions, connectTimeoutMillis);
+		return createSocket(socketAddress, socketOptions, connectTimeoutMillis, bufLowWaterMark, bufHighWaterMark);
 	}
 
 	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
-			final SocketOptions socketOptions, final int connectTimeoutMillis) throws InterruptedException {
+			final SocketOptions socketOptions, final int connectTimeoutMillis, final int bufLowWaterMark,
+			final int bufHighWaterMark) throws InterruptedException {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
-		b.group(workerGroup).channel(NioSocketChannel.class).option(ChannelOption.ALLOCATOR,
-				new UnpooledByteBufAllocator(false));
+		b.group(workerGroup).channel(NioSocketChannel.class)
+				.option(ChannelOption.ALLOCATOR, new UnpooledByteBufAllocator(false))
+				.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Integer.valueOf(connectTimeoutMillis));
 		if (socketOptions != null) {
 			if (socketOptions.isKeepAlive() != null) {
 				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
@@ -535,28 +552,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				b.option(ChannelOption.IP_TOS, actualTrafficClass);
 			}
 		}
-		int lowWaterMark;
-		try {
-			lowWaterMark = Integer
-					.parseInt(System.getProperty("writeBufferLowWaterMark", String.valueOf(4 * 1024 * 1024)));
-		} catch (NumberFormatException e) {
-			lowWaterMark = DEFAULT_LOW_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferLowWaterMark\", defaulting to {} MB",
-					(lowWaterMark / MEGABYTE));
-		}
-		int highWaterMark;
-		try {
-			highWaterMark = Integer
-					.parseInt(System.getProperty("writeBufferHighWaterMark", String.valueOf(8 * 1024 * 1024)));
-		} catch (NumberFormatException e) {
-			highWaterMark = DEFAULT_HIGH_WATER_MARK;
-			LOGGER.debug("Error reading system property \"writeBufferHighWaterMark\", defaulting to {} MB",
-					(highWaterMark / MEGABYTE));
-		}
-		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(lowWaterMark, highWaterMark)); // 4 MB
-																												// (low)
-																												// 8 MB
-																												// (high)
+		int bufLow = bufLowWaterMark > 0 ? bufLowWaterMark : DEFAULT_LOW_WATER_MARK; // 4 MB (low default)
+		int bufHigh = bufHighWaterMark > 0 ? bufHighWaterMark : DEFAULT_HIGH_WATER_MARK; // 8 MB (high default)
+		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(bufLow, bufHigh));
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
@@ -576,29 +574,33 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		protected final int port;
 		protected final int connectTimeoutMillis;
 		protected final int reconnectDelayMillis;
-		protected final boolean immediateFail;
 		protected final Layout<? extends Serializable> layout;
 		protected final int bufferSize;
+		protected final int bufLowWaterMark;
+		protected final int bufHighWaterMark;
 		protected final SocketOptions socketOptions;
 
 		public FactoryData(final String host, final int port, final int connectTimeoutMillis,
-				final int reconnectDelayMillis, final boolean immediateFail,
-				final Layout<? extends Serializable> layout, final int bufferSize, final SocketOptions socketOptions) {
+				final int reconnectDelayMillis, final Layout<? extends Serializable> layout, final int bufferSize,
+				final int bufLowWaterMark, final int bufHighWaterMark, final SocketOptions socketOptions) {
 			this.host = host;
 			this.port = port;
 			this.connectTimeoutMillis = connectTimeoutMillis;
 			this.reconnectDelayMillis = reconnectDelayMillis;
-			this.immediateFail = immediateFail;
 			this.layout = layout;
 			this.bufferSize = bufferSize;
+			this.bufLowWaterMark = bufLowWaterMark;
+			this.bufHighWaterMark = bufHighWaterMark;
 			this.socketOptions = socketOptions;
 		}
 
 		@Override
-		public String toString() {
-			return "FactoryData [host=" + host + ", port=" + port + ", connectTimeoutMillis=" + connectTimeoutMillis
-					+ ", reconnectDelayMillis=" + reconnectDelayMillis + ", immediateFail=" + immediateFail
-					+ ", layout=" + layout + ", bufferSize=" + bufferSize + ", socketOptions=" + socketOptions + "]";
+		public final String toString() {
+			return "FactoryData [" + (host != null ? "host=" + host + ", " : "") + "port=" + port
+					+ ", connectTimeoutMillis=" + connectTimeoutMillis + ", reconnectDelayMillis="
+					+ reconnectDelayMillis + ", " + (layout != null ? "layout=" + layout + ", " : "") + "bufferSize="
+					+ bufferSize + ", bufLowWaterMark=" + bufLowWaterMark + ", bufHighWaterMark=" + bufHighWaterMark
+					+ ", " + (socketOptions != null ? "socketOptions=" + socketOptions : "") + "]";
 		}
 	}
 
@@ -625,8 +627,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		@SuppressWarnings("unchecked")
 		M createManager(final String name, final Channel channel, final InetAddress inetAddress, final T data) {
 			return (M) new NettyTcpSocketManager(name, channel, inetAddress, data.host, data.port,
-					data.connectTimeoutMillis, data.reconnectDelayMillis, data.immediateFail, data.layout,
-					data.bufferSize, data.socketOptions);
+					data.connectTimeoutMillis, data.reconnectDelayMillis, data.layout, data.bufferSize,
+					data.bufLowWaterMark, data.bufHighWaterMark, data.socketOptions);
 		}
 
 		Channel createSocket(final T data) throws Exception {
@@ -634,8 +636,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			Exception e = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
 				try {
-					return NettyTcpSocketManager
-							.createSocket(socketAddress, data.socketOptions, data.connectTimeoutMillis)
+					return NettyTcpSocketManager.createSocket(socketAddress, data.socketOptions,
+							data.connectTimeoutMillis, data.bufLowWaterMark, data.bufHighWaterMark)
 							.syncUninterruptibly().channel();
 				} catch (Exception ex) {
 					e = ex;
