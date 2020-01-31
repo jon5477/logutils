@@ -7,7 +7,30 @@
 	<packaging>jar</packaging>
 	<version>1.0</version>
 	<name>log-utils</name>
-	<url>http://maven.apache.org</url>
+	<description>Appenders for Log4J2</description>
+	<url>https://github.com/jon5477/logutils</url>
+	<issueManagement>
+		<url>https://github.com/jon5477/logutils/issues</url>
+	</issueManagement>
+	<distributionManagement>
+		<repository>
+			<uniqueVersion>false</uniqueVersion>
+			<id>github</id>
+			<name>GitHub Apache Maven Packages</name>
+			<url>https://maven.pkg.github.com/jon5477/logutils</url>
+			<layout>default</layout>
+		</repository>
+	</distributionManagement>
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.source>1.8</maven.compiler.source>
+		<maven.compiler.target>1.8</maven.compiler.target>
+		<!--<maven.compiler.release>8</maven.compiler.release> -->
+		<log4j.version>2.13.0</log4j.version>
+		<gson.version>2.8.6</gson.version>
+		<httpclient.version>4.5.11</httpclient.version>
+		<netty.version>4.1.44.Final</netty.version>
+	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
@@ -51,16 +74,6 @@
 			<version>1.7.29</version>
 		</dependency>
 	</dependencies>
-	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<maven.compiler.source>1.8</maven.compiler.source>
-		<maven.compiler.target>1.8</maven.compiler.target>
-		<!--<maven.compiler.release>8</maven.compiler.release> -->
-		<log4j.version>2.13.0</log4j.version>
-		<gson.version>2.8.6</gson.version>
-		<httpclient.version>4.5.11</httpclient.version>
-		<netty.version>4.1.44.Final</netty.version>
-	</properties>
 	<build>
 		<plugins>
 			<plugin>
@@ -141,5 +154,4 @@
 			</plugin>
 		</plugins>
 	</build>
-	<description>Appenders for Log4J2</description>
 </project>
