@@ -174,6 +174,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		if (reconnectDelayMillis == 0) {
 			reconnectDelayMillis = DEFAULT_RECONNECTION_DELAY_MILLIS;
 		}
+		if (writerTimeoutMillis < 0) {
+			writerTimeoutMillis = 0;
+		}
 		return (NettyTcpSocketManager) getManager(name,
 				new FactoryData(host, port, connectTimeoutMillis, writerTimeoutMillis, reconnectDelayMillis, layout,
 						bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName),
@@ -720,8 +723,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	public final String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
 				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
-				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host="
-				+ host + ", port=" + port + ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count
-				+ "]";
+				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", writerTimeoutMillis="
+				+ writerTimeoutMillis + ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port
+				+ ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
 	}
 }
