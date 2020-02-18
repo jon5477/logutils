@@ -31,17 +31,19 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.WriteBufferWaterMark;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
@@ -99,6 +101,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private final int bufHighWaterMark;
 	private final boolean retry;
 	private final int connectTimeoutMillis;
+	private final int writerTimeoutMillis;
 
 	/**
 	 * Constructs.
@@ -109,7 +112,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param inetAddress             The Internet address of the host.
 	 * @param host                    The name of the host.
 	 * @param port                    The port number on the host.
-	 * @param connectTimeoutMillis    the connect timeout in milliseconds.
+	 * @param connectTimeoutMillis    The connect timeout in milliseconds.
+	 * @param writerTimeoutMillis     The writer timeout in milliseconds.
 	 * @param reconnectionDelayMillis Reconnection interval.
 	 * @param layout                  The Layout.
 	 * @param bufferSize              The buffer size.
@@ -119,11 +123,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param tapeBufFileName         The tape buffer file name
 	 */
 	public NettyTcpSocketManager(final String name, final Channel channel, final InetAddress inetAddress,
-			final String host, final int port, final int connectTimeoutMillis, final int reconnectionDelayMillis,
-			final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
-			final int bufHighWaterMark, final SocketOptions socketOptions, final String tapeBufFileName) {
+			final String host, final int port, final int connectTimeoutMillis, final int writerTimeoutMillis,
+			final int reconnectionDelayMillis, final Layout<? extends Serializable> layout, final int bufferSize,
+			final int bufLowWaterMark, final int bufHighWaterMark, final SocketOptions socketOptions,
+			final String tapeBufFileName) {
 		super(name, null, inetAddress, host, port, layout, true, 0);
 		this.connectTimeoutMillis = connectTimeoutMillis;
+		this.writerTimeoutMillis = writerTimeoutMillis;
 		this.reconnectionDelayMillis = reconnectionDelayMillis;
 		this.channelRef.set(channel);
 		this.retry = reconnectionDelayMillis > 0;
@@ -146,7 +152,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param name                 The name of the appender
 	 * @param host                 The host to connect to.
 	 * @param port                 The port on the host.
-	 * @param connectTimeoutMillis the connect timeout in milliseconds
+	 * @param connectTimeoutMillis The connect timeout in milliseconds
+	 * @param writerTimeoutMillis  The writer timeout in milliseconds
 	 * @param reconnectDelayMillis The interval to pause between retries.
 	 * @param bufferSize           The buffer size.
 	 * @param bufLowWaterMark      The buffer low water mark
@@ -155,9 +162,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @return A TcpSocketManager.
 	 */
 	public static NettyTcpSocketManager getSocketManager(final String name, final String host, int port,
-			final int connectTimeoutMillis, int reconnectDelayMillis, final Layout<? extends Serializable> layout,
-			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
-			final SocketOptions socketOptions, final String bufFileName) {
+			final int connectTimeoutMillis, int writerTimeoutMillis, int reconnectDelayMillis,
+			final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
+			final int bufHighWaterMark, final SocketOptions socketOptions, final String bufFileName) {
 		if (Strings.isEmpty(host)) {
 			throw new IllegalArgumentException("A host name is required");
 		}
@@ -167,8 +174,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		if (reconnectDelayMillis == 0) {
 			reconnectDelayMillis = DEFAULT_RECONNECTION_DELAY_MILLIS;
 		}
-		return (NettyTcpSocketManager) getManager(name, new FactoryData(host, port, connectTimeoutMillis,
-				reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName), FACTORY);
+		if (writerTimeoutMillis < 0) {
+			writerTimeoutMillis = 0;
+		}
+		return (NettyTcpSocketManager) getManager(name,
+				new FactoryData(host, port, connectTimeoutMillis, writerTimeoutMillis, reconnectDelayMillis, layout,
+						bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName),
+				FACTORY);
 	}
 
 	/**
@@ -243,7 +255,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 */
 	@SuppressWarnings("sync-override")
 	@Override
-	protected final void write(final byte[] bytes, final int offset, final int length, final boolean immediateFlush) {
+	protected final void write(byte[] bytes, int offset, int length, boolean immediateFlush) {
 		// Fetch the channel for performing the write
 		Channel ch = channelRef.get();
 		if (ch != null && ch.isActive()) {
@@ -512,12 +524,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
-		return createSocket(socketAddress, socketOptions, connectTimeoutMillis, bufLowWaterMark, bufHighWaterMark);
+		return createSocket(socketAddress, socketOptions, connectTimeoutMillis, writerTimeoutMillis, bufLowWaterMark,
+				bufHighWaterMark);
 	}
 
 	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
-			final SocketOptions socketOptions, final int connectTimeoutMillis, final int bufLowWaterMark,
-			final int bufHighWaterMark) throws InterruptedException {
+			final SocketOptions socketOptions, final int connectTimeoutMillis, final int writerTimeoutMillis,
+			final int bufLowWaterMark, final int bufHighWaterMark) throws InterruptedException {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class)
@@ -558,11 +571,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		LOGGER.debug("WRITE_BUFFER_HIGH_WATER_MARK size: " + bufHigh);
 		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(bufLow, bufHigh));
 		// Set the Netty handler
+		int writerIdleTimeSeconds = writerTimeoutMillis / 1000;
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
 			protected void initChannel(SocketChannel ch) throws Exception {
-				ch.pipeline().addLast(new AppenderInboundHandler());
-				ch.pipeline().addLast(new ChannelOutboundHandlerAdapter());
+				ch.pipeline().addFirst("idle", new IdleStateHandler(0, writerIdleTimeSeconds, 0));
+				ch.pipeline().addLast(new AppenderDuplexHandler());
 			}
 		});
 		return b.connect(socketAddress.getAddress().getHostAddress(), socketAddress.getPort());
@@ -575,6 +589,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		protected final String host;
 		protected final int port;
 		protected final int connectTimeoutMillis;
+		protected final int writerTimeoutMillis;
 		protected final int reconnectDelayMillis;
 		protected final Layout<? extends Serializable> layout;
 		protected final int bufferSize;
@@ -584,12 +599,13 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		protected final String bufFileName;
 
 		public FactoryData(final String host, final int port, final int connectTimeoutMillis,
-				final int reconnectDelayMillis, final Layout<? extends Serializable> layout, final int bufferSize,
-				final int bufLowWaterMark, final int bufHighWaterMark, final SocketOptions socketOptions,
-				final String bufFileName) {
+				final int reconnectDelayMillis, final int writerTimeoutMillis,
+				final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
+				final int bufHighWaterMark, final SocketOptions socketOptions, final String bufFileName) {
 			this.host = host;
 			this.port = port;
 			this.connectTimeoutMillis = connectTimeoutMillis;
+			this.writerTimeoutMillis = writerTimeoutMillis;
 			this.reconnectDelayMillis = reconnectDelayMillis;
 			this.layout = layout;
 			this.bufferSize = bufferSize;
@@ -602,9 +618,10 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		@Override
 		public final String toString() {
 			return "FactoryData [host=" + host + ", port=" + port + ", connectTimeoutMillis=" + connectTimeoutMillis
-					+ ", reconnectDelayMillis=" + reconnectDelayMillis + ", layout=" + layout + ", bufferSize="
-					+ bufferSize + ", bufLowWaterMark=" + bufLowWaterMark + ", bufHighWaterMark=" + bufHighWaterMark
-					+ ", socketOptions=" + socketOptions + ", bufFileName=" + bufFileName + "]";
+					+ ", writerTimeoutMillis=" + writerTimeoutMillis + ", reconnectDelayMillis=" + reconnectDelayMillis
+					+ ", layout=" + layout + ", bufferSize=" + bufferSize + ", bufLowWaterMark=" + bufLowWaterMark
+					+ ", bufHighWaterMark=" + bufHighWaterMark + ", socketOptions=" + socketOptions + ", bufFileName="
+					+ bufFileName + "]";
 		}
 	}
 
@@ -631,8 +648,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		@SuppressWarnings("unchecked")
 		M createManager(final String name, final Channel channel, final InetAddress inetAddress, final T data) {
 			return (M) new NettyTcpSocketManager(name, channel, inetAddress, data.host, data.port,
-					data.connectTimeoutMillis, data.reconnectDelayMillis, data.layout, data.bufferSize,
-					data.bufLowWaterMark, data.bufHighWaterMark, data.socketOptions, data.bufFileName);
+					data.connectTimeoutMillis, data.reconnectDelayMillis, data.writerTimeoutMillis, data.layout,
+					data.bufferSize, data.bufLowWaterMark, data.bufHighWaterMark, data.socketOptions, data.bufFileName);
 		}
 
 		Channel createSocket(final T data) throws Exception {
@@ -640,8 +657,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			Exception e = null;
 			for (InetSocketAddress socketAddress : socketAddresses) {
 				try {
-					return NettyTcpSocketManager.createSocket(socketAddress, data.socketOptions,
-							data.connectTimeoutMillis, data.bufLowWaterMark, data.bufHighWaterMark)
+					return NettyTcpSocketManager
+							.createSocket(socketAddress, data.socketOptions, data.connectTimeoutMillis,
+									data.writerTimeoutMillis, data.bufLowWaterMark, data.bufHighWaterMark)
 							.syncUninterruptibly().channel();
 				} catch (Exception ex) {
 					e = ex;
@@ -681,7 +699,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return socketAddresses;
 	}
 
-	private static final class AppenderInboundHandler extends ChannelInboundHandlerAdapter {
+	private static final class AppenderDuplexHandler extends ChannelDuplexHandler {
 		@Override
 		public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 			ReferenceCountUtil.release(msg);
@@ -691,14 +709,22 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			LOGGER.error(cause.getMessage(), cause);
 		}
+
+		@Override
+		public final void userEventTriggered(ChannelHandlerContext ctx, Object event) throws Exception {
+			if (event instanceof IdleStateEvent && ((IdleStateEvent) event).state() == IdleState.WRITER_IDLE) {
+				// Just close the connection if the idle event is triggered
+				ctx.close();
+			}
+		}
 	}
 
 	@Override
 	public final String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
 				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="
-				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", inetAddress=" + inetAddress + ", host="
-				+ host + ", port=" + port + ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count
-				+ "]";
+				+ retry + ", connectTimeoutMillis=" + connectTimeoutMillis + ", writerTimeoutMillis="
+				+ writerTimeoutMillis + ", inetAddress=" + inetAddress + ", host=" + host + ", port=" + port
+				+ ", layout=" + layout + ", byteBuffer=" + byteBuffer + ", count=" + count + "]";
 	}
 }

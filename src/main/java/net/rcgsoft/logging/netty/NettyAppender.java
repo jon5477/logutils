@@ -59,6 +59,9 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		private int connectTimeoutMillis;
 
 		@PluginBuilderAttribute
+		private int writerTimeoutMillis;
+
+		@PluginBuilderAttribute
 		@ValidHost
 		private String host = "localhost";
 
@@ -98,6 +101,10 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 
 		public int getConnectTimeoutMillis() {
 			return connectTimeoutMillis;
+		}
+
+		public int getWriterTimeoutMillis() {
+			return writerTimeoutMillis;
 		}
 
 		public String getHost() {
@@ -232,7 +239,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 				immediateFlush = true;
 			}
 			final AbstractSocketManager manager = NettyAppender.createSocketManager(name, actualProtocol, getHost(),
-					getPort(), getConnectTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
+					getPort(), getConnectTimeoutMillis(), getWriterTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
 					getImmediateFail(), layout, getBufferSize(), getBufferLowWaterMark(), getBufferHighWaterMark(),
 					getSocketOptions(), getBufFileName());
 			return new NettyAppender(name, layout, getFilter(), manager, isIgnoreExceptions(),
@@ -282,10 +289,10 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	 * @throws IllegalArgumentException if the protocol cannot be handled.
 	 */
 	protected static AbstractSocketManager createSocketManager(final String name, Protocol protocol, final String host,
-			final int port, final int connectTimeoutMillis, final SslConfiguration sslConfig,
-			final int reconnectDelayMillis, final boolean immediateFail, final Layout<? extends Serializable> layout,
-			final int bufferSize, final int bufLowWaterMark, final int bufHighWaterMark,
-			final SocketOptions socketOptions, final String bufFileName) {
+			final int port, final int connectTimeoutMillis, final int writerTimeoutMillis,
+			final SslConfiguration sslConfig, final int reconnectDelayMillis, final boolean immediateFail,
+			final Layout<? extends Serializable> layout, final int bufferSize, final int bufLowWaterMark,
+			final int bufHighWaterMark, final SocketOptions socketOptions, final String bufFileName) {
 		if (protocol == Protocol.TCP && sslConfig != null) {
 			// Upgrade TCP to SSL if an SSL config is specified.
 			protocol = Protocol.SSL;
@@ -295,8 +302,9 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		}
 		switch (protocol) {
 		case TCP:
-			return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis, reconnectDelayMillis,
-					layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions, bufFileName);
+			return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis, writerTimeoutMillis,
+					reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions,
+					bufFileName);
 		case UDP:
 			return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
 		case SSL:
