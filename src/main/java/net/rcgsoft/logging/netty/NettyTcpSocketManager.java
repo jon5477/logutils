@@ -571,11 +571,12 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		LOGGER.debug("WRITE_BUFFER_HIGH_WATER_MARK size: " + bufHigh);
 		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(bufLow, bufHigh));
 		// Set the Netty handler
-		int writerIdleTimeSeconds = writerTimeoutMillis / 1000;
 		b.handler(new ChannelInitializer<SocketChannel>() {
 			@Override
 			protected void initChannel(SocketChannel ch) throws Exception {
-				ch.pipeline().addFirst("idle", new IdleStateHandler(0, writerIdleTimeSeconds, 0));
+				if (writerTimeoutMillis > 0) {
+					ch.pipeline().addLast(new IdleStateHandler(0, writerTimeoutMillis, 0, TimeUnit.MILLISECONDS));
+				}
 				ch.pipeline().addLast(new AppenderDuplexHandler());
 			}
 		});
@@ -714,6 +715,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		public final void userEventTriggered(ChannelHandlerContext ctx, Object event) throws Exception {
 			if (event instanceof IdleStateEvent && ((IdleStateEvent) event).state() == IdleState.WRITER_IDLE) {
 				// Just close the connection if the idle event is triggered
+				LOGGER.debug("Closing socket due to writer inactivity.");
 				ctx.close();
 			}
 		}
