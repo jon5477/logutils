@@ -5,13 +5,16 @@
 	<groupId>net.rcgsoft.logging</groupId>
 	<artifactId>log-utils</artifactId>
 	<packaging>jar</packaging>
-	<version>1.0</version>
+	<version>1.0.1-SNAPSHOT</version>
 	<name>log-utils</name>
 	<description>Appenders for Log4J2</description>
 	<url>https://github.com/jon5477/logutils</url>
 	<issueManagement>
 		<url>https://github.com/jon5477/logutils/issues</url>
 	</issueManagement>
+	<scm>
+		<connection>scm:git:git@github.com:jon5477/logutils.git</connection>
+	</scm>
 	<distributionManagement>
 		<repository>
 			<uniqueVersion>false</uniqueVersion>
