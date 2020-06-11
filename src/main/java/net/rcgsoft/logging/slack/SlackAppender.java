@@ -127,6 +127,9 @@ public final class SlackAppender extends AbstractAppender {
 	}
 
 	/**
+	 * Creates a new builder for HttpAppender
+	 * 
+	 * @param <B> The type of builder
 	 * @return a builder for a HttpAppender.
 	 */
 	@PluginBuilderFactory

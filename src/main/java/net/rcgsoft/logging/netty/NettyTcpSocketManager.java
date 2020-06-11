@@ -104,23 +104,27 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private final int writerTimeoutMillis;
 
 	/**
-	 * Constructs.
-	 *
-	 * @param name                    The unique name of this connection.
-	 * @param os                      The OutputStream.
-	 * @param channel                 The Netty {@link Channel}.
+	 * Constructor for a Netty-based TCP socket manager.
+	 * 
+	 * @param name                    The unique name of this appender.
+	 * @param channel                 The Netty {@code Channel}.
 	 * @param inetAddress             The Internet address of the host.
-	 * @param host                    The name of the host.
+	 * @param host                    The hostname of the host.
 	 * @param port                    The port number on the host.
-	 * @param connectTimeoutMillis    The connect timeout in milliseconds.
-	 * @param writerTimeoutMillis     The writer timeout in milliseconds.
-	 * @param reconnectionDelayMillis Reconnection interval.
-	 * @param layout                  The Layout.
-	 * @param bufferSize              The buffer size.
-	 * @param bufLowWaterMark         The buffer low water mark
-	 * @param bufHighWaterMark        The buffer high water mark
+	 * @param connectTimeoutMillis    The connect timeout (in milliseconds)
+	 * @param writerTimeoutMillis     The writer timeout (in milliseconds)
+	 * @param reconnectionDelayMillis The reconnection interval (in milliseconds)
+	 * @param layout                  The logging {@code Layout}
+	 * @param bufferSize              The socket write buffer size (in bytes)
+	 * @param bufLowWaterMark         The low water mark of the writer buffer (if it
+	 *                                falls below this {@link Channel#isWritable()}
+	 *                                returns {@code true})
+	 * @param bufHighWaterMark        The high water mark of the writer buffer (if
+	 *                                it goes above this
+	 *                                {@link Channel#isWritable()} returns
+	 *                                {@code false})
 	 * @param socketOptions           The socket options
-	 * @param tapeBufFileName         The tape buffer file name
+	 * @param tapeBufFileName         The buffer file name for storing failed writes
 	 */
 	public NettyTcpSocketManager(final String name, final Channel channel, final InetAddress inetAddress,
 			final String host, final int port, final int connectTimeoutMillis, final int writerTimeoutMillis,
@@ -147,19 +151,25 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	/**
-	 * Obtains a NettyTcpSocketManager.
-	 *
-	 * @param name                 The name of the appender
-	 * @param host                 The host to connect to.
-	 * @param port                 The port on the host.
-	 * @param connectTimeoutMillis The connect timeout in milliseconds
-	 * @param writerTimeoutMillis  The writer timeout in milliseconds
-	 * @param reconnectDelayMillis The interval to pause between retries.
-	 * @param bufferSize           The buffer size.
-	 * @param bufLowWaterMark      The buffer low water mark
-	 * @param bufHighWaterMark     The buffer high water mark
-	 * @param bufFileName          The tape buffer file name
-	 * @return A TcpSocketManager.
+	 * Creates and fetches a Netty-based TCP socket manager.
+	 * 
+	 * @param name                 The unique name of this appender.
+	 * @param host                 The hostname of the host.
+	 * @param port                 The port number on the host.
+	 * @param connectTimeoutMillis The connect timeout (in milliseconds)
+	 * @param writerTimeoutMillis  The writer timeout (in milliseconds)
+	 * @param reconnectDelayMillis The reconnection interval (in milliseconds)
+	 * @param layout               The logging {@code Layout}
+	 * @param bufferSize           The socket write buffer size (in bytes)
+	 * @param bufLowWaterMark      The low water mark of the writer buffer (if it
+	 *                             falls below this {@link Channel#isWritable()}
+	 *                             returns {@code true})
+	 * @param bufHighWaterMark     The high water mark of the writer buffer (if it
+	 *                             goes above this {@link Channel#isWritable()}
+	 *                             returns {@code false})
+	 * @param socketOptions        The socket options
+	 * @param bufFileName          The buffer file name for storing failed writes
+	 * @return The created Netty-based TCP Socket Manager.
 	 */
 	public static NettyTcpSocketManager getSocketManager(final String name, final String host, int port,
 			final int connectTimeoutMillis, int writerTimeoutMillis, int reconnectDelayMillis,

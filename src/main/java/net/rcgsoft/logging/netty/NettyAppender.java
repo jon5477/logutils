@@ -28,6 +28,8 @@ import org.apache.logging.log4j.core.net.SocketOptions;
 import org.apache.logging.log4j.core.net.SslSocketManager;
 import org.apache.logging.log4j.core.net.ssl.SslConfiguration;
 
+import io.netty.channel.Channel;
+
 /**
  * An Appender that delivers events over netty socket connections. Supports both
  * TCP and UDP.
@@ -239,9 +241,9 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 				immediateFlush = true;
 			}
 			final AbstractSocketManager manager = NettyAppender.createSocketManager(name, actualProtocol, getHost(),
-					getPort(), getConnectTimeoutMillis(), getWriterTimeoutMillis(), getSslConfiguration(), getReconnectDelayMillis(),
-					getImmediateFail(), layout, getBufferSize(), getBufferLowWaterMark(), getBufferHighWaterMark(),
-					getSocketOptions(), getBufFileName());
+					getPort(), getConnectTimeoutMillis(), getWriterTimeoutMillis(), getSslConfiguration(),
+					getReconnectDelayMillis(), getImmediateFail(), layout, getBufferSize(), getBufferLowWaterMark(),
+					getBufferHighWaterMark(), getSocketOptions(), getBufFileName());
 			return new NettyAppender(name, layout, getFilter(), manager, isIgnoreExceptions(),
 					!bufferedIo || immediateFlush, getAdvertise() ? getConfiguration().getAdvertiser() : null,
 					getPropertyArray());
@@ -284,9 +286,30 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	}
 
 	/**
-	 * Creates an AbstractSocketManager for TCP, UDP, and SSL.
-	 *
-	 * @throws IllegalArgumentException if the protocol cannot be handled.
+	 * Creates an {@code AbstractSocketManager} for TCP, UDP, and SSL-based sockets.
+	 * 
+	 * @param name                 The socket name
+	 * @param protocol             The socket protocol
+	 * @param host                 The host to connect to
+	 * @param port                 The port to connect to
+	 * @param connectTimeoutMillis The connection timeout (in milliseconds)
+	 * @param writerTimeoutMillis  The writer timeout (in milliseconds)
+	 * @param sslConfig            The SSL configuration
+	 * @param reconnectDelayMillis The reconnection delay (in milliseconds)
+	 * @param immediateFail        {@code true} if the connection should immediately
+	 *                             fail during connection
+	 * @param layout               The layout of the logging output
+	 * @param bufferSize           The socket write buffer size (in bytes)
+	 * @param bufLowWaterMark      The low water mark of the writer buffer (if it
+	 *                             falls below this {@link Channel#isWritable()}
+	 *                             returns {@code true})
+	 * @param bufHighWaterMark     The high water mark of the writer buffer (if it
+	 *                             goes above this {@link Channel#isWritable()}
+	 *                             returns {@code false})
+	 * @param socketOptions        The socket options
+	 * @param bufFileName          The buffer file name for storing failed writes
+	 * @return The {@code AbstractSocketManager} implementation based on the socket
+	 *         protocol.
 	 */
 	protected static AbstractSocketManager createSocketManager(final String name, Protocol protocol, final String host,
 			final int port, final int connectTimeoutMillis, final int writerTimeoutMillis,
