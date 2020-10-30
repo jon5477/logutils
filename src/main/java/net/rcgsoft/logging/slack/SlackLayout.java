@@ -16,6 +16,11 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
+/**
+ * 
+ * @author Jon Huang
+ *
+ */
 @Plugin(name = "SlackLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public class SlackLayout extends AbstractStringLayout {
 	private static final Gson gson = new GsonBuilder().create();
@@ -59,7 +64,6 @@ public class SlackLayout extends AbstractStringLayout {
 		JsonObject payload = new JsonObject();
 		JsonArray attachments = new JsonArray();
 		JsonObject attachment = new JsonObject();
-		
 		// Add Thread name and Class location
 		StringBuilder text = new StringBuilder();
 		text.append('[').append(event.getThreadName()).append(']');
@@ -67,26 +71,23 @@ public class SlackLayout extends AbstractStringLayout {
 			text.append(' ').append(event.getSource().getClassName());
 		}
 		attachment.addProperty("text", text.toString());
-		
 		// Add Color
 		attachment.addProperty("color", getColorByLevel(event.getLevel())); // Based on level
-		
+		// Exception fields
 		JsonArray fields = new JsonArray();
-
 		// Add Level Field
 		JsonObject levelField = new JsonObject();
 		levelField.addProperty("title", "Level");
 		levelField.addProperty("value", event.getLevel().toString());
 		levelField.addProperty("short", Boolean.FALSE);
 		fields.add(levelField);
-		
 		// Add Message Field
 		JsonObject msgField = new JsonObject();
 		msgField.addProperty("title", "Message");
 		msgField.addProperty("value", event.getMessage().getFormattedMessage());
 		msgField.addProperty("short", Boolean.FALSE);
 		fields.add(msgField);
-		
+		// Check if Throwable is proxied
 		ThrowableProxy tp = event.getThrownProxy();
 		if (tp != null) {
 			// Add Stack Trace Field
@@ -96,7 +97,6 @@ public class SlackLayout extends AbstractStringLayout {
 			stField.addProperty("short", Boolean.FALSE);
 			fields.add(stField);
 		}
-		
 		// Add fields
 		attachment.add("fields", fields);
 		// Add timestamp

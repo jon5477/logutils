@@ -20,6 +20,12 @@ import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
 import org.apache.logging.log4j.core.net.ssl.SslConfiguration;
 
+/**
+ * Slack Appender for sending log events to a Slack webhook.
+ * 
+ * @author Jon Huang
+ *
+ */
 @Plugin(name = "Slack", category = Node.CATEGORY, elementType = Appender.ELEMENT_TYPE, printObject = true)
 public final class SlackAppender extends AbstractAppender {
 

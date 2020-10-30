@@ -19,11 +19,17 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.HttpManager;
 import org.apache.logging.log4j.core.config.Configuration;
 
+/**
+ * 
+ * @author Jon Huang
+ *
+ */
 public final class SlackManager extends HttpManager {
 	private final URL url;
 	private final boolean verifyHostname;
 
-	protected SlackManager(Configuration configuration, LoggerContext loggerContext, String name, URL url, boolean verifyHostname) {
+	protected SlackManager(Configuration configuration, LoggerContext loggerContext, String name, URL url,
+			boolean verifyHostname) {
 		super(configuration, loggerContext, name);
 		this.url = url;
 		this.verifyHostname = verifyHostname;
