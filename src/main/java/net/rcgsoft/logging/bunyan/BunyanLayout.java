@@ -18,6 +18,7 @@ import com.eclipsesource.json.JsonObject;
 
 import net.rcgsoft.logging.layout.AbstractJsonLayout;
 import net.rcgsoft.logging.message.ContextualMessage;
+import net.rcgsoft.logging.util.SerializationUtil;
 
 /**
  * A Log4j2 Layout which prints events in Node Bunyan JSON format. The layout
@@ -40,7 +41,6 @@ public class BunyanLayout extends AbstractJsonLayout {
 	/**
 	 * Format the event as a Bunyan style JSON object.
 	 */
-	@SuppressWarnings("deprecation")
 	@Override
 	protected final JsonObject formatJson(LogEvent event) {
 		JsonObject jsonEvent = new JsonObject();
@@ -48,7 +48,9 @@ public class BunyanLayout extends AbstractJsonLayout {
 		if (msg instanceof ContextualMessage) {
 			Map<String, Object> context = ((ContextualMessage) msg).getContext();
 			if (!context.isEmpty()) {
-				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+				for (Map.Entry<String, Object> entry : context.entrySet()) {
+					jsonEvent.add(entry.getKey(), SerializationUtil.toJsonObject(entry.getValue()));
+				}
 			}
 			jsonEvent.add("tags", listToJsonStringArray(((ContextualMessage) msg).getTags()));
 		}

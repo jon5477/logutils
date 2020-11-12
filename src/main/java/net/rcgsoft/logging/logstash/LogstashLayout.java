@@ -19,12 +19,12 @@ import com.eclipsesource.json.JsonObject;
 
 import net.rcgsoft.logging.layout.AbstractJsonLayout;
 import net.rcgsoft.logging.message.ContextualMessage;
+import net.rcgsoft.logging.util.SerializationUtil;
 
 /**
  * A Log4j2 Layout which prints events in Logstash JSON format. The layout takes
  * no options and requires no additional configuration.
  */
-@SuppressWarnings("deprecation")
 @Plugin(name = "LogstashLayout", category = "Core", elementType = "layout", printObject = true)
 public class LogstashLayout extends AbstractJsonLayout {
 	@PluginFactory
@@ -47,7 +47,9 @@ public class LogstashLayout extends AbstractJsonLayout {
 		if (msg instanceof ContextualMessage) {
 			Map<String, Object> context = ((ContextualMessage) msg).getContext();
 			if (!context.isEmpty()) {
-				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
+				for (Map.Entry<String, Object> entry : context.entrySet()) {
+					jsonEvent.add(entry.getKey(), SerializationUtil.toJsonObject(entry.getValue()));
+				}
 			}
 			JsonArray tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
 			tags.add("bunyan");
