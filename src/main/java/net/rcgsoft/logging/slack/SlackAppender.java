@@ -59,6 +59,9 @@ public final class SlackAppender extends AbstractAppender {
 		@PluginBuilderAttribute
 		private boolean verifyHostname = true;
 
+		@PluginBuilderAttribute
+		private int limitPayloadSize = 0;
+
 		@SuppressWarnings("resource")
 		@Override
 		public SlackAppender build() {
@@ -128,6 +131,11 @@ public final class SlackAppender extends AbstractAppender {
 
 		public B setVerifyHostname(final boolean verifyHostname) {
 			this.verifyHostname = verifyHostname;
+			return asBuilder();
+		}
+
+		public B setLimitPayloadSize(final int limitPayloadSize) {
+			this.limitPayloadSize = limitPayloadSize;
 			return asBuilder();
 		}
 	}

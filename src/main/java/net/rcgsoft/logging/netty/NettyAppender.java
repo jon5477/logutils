@@ -220,7 +220,6 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	 */
 	public static class Builder extends AbstractBuilder<Builder>
 			implements org.apache.logging.log4j.core.util.Builder<NettyAppender> {
-		@SuppressWarnings("resource")
 		@Override
 		public NettyAppender build() {
 			boolean immediateFlush = isImmediateFlush();
