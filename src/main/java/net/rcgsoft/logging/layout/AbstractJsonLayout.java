@@ -13,10 +13,10 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.layout.AbstractStringLayout;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.eclipsesource.json.JsonArray;
+import com.eclipsesource.json.JsonObject;
+
+import io.netty.handler.codec.http.HttpHeaderValues;
 
 public abstract class AbstractJsonLayout extends AbstractStringLayout {
 	protected static final Map<Level, Integer> BUNYAN_LEVEL = new HashMap<>();
@@ -30,7 +30,7 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 		BUNYAN_LEVEL.put(Level.TRACE, 10);
 	}
 
-	protected static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+//	protected static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
 	protected AbstractJsonLayout(Charset charset) {
 		super(charset);
@@ -40,7 +40,7 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 
 	protected final String format(LogEvent event) {
 		StringBuilder sb = new StringBuilder();
-		sb.append(GSON.toJson(this.formatJson(event)));
+		sb.append(this.formatJson(event));
 		sb.append('\n');
 		return sb.toString();
 	}
@@ -62,7 +62,7 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 
 	@Override
 	public final String getContentType() {
-		return "application/json";
+		return HttpHeaderValues.APPLICATION_JSON.toString();
 	}
 
 	@Override

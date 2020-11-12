@@ -14,10 +14,9 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
+import com.eclipsesource.json.JsonArray;
+import com.eclipsesource.json.JsonObject;
 
-import net.rcgsoft.logging.bunyan.BunyanMessage;
 import net.rcgsoft.logging.layout.AbstractJsonLayout;
 import net.rcgsoft.logging.message.ContextualMessage;
 
@@ -45,43 +44,36 @@ public class LogstashLayout extends AbstractJsonLayout {
 	protected final JsonObject formatJson(LogEvent event) {
 		JsonObject jsonEvent = new JsonObject();
 		Message msg = event.getMessage();
-		if (msg instanceof BunyanMessage) {
-			Map<String, Object> context = ((BunyanMessage) msg).getContext();
-			if (!context.isEmpty()) {
-				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
-			}
-		}
 		if (msg instanceof ContextualMessage) {
 			Map<String, Object> context = ((ContextualMessage) msg).getContext();
 			if (!context.isEmpty()) {
 				context.forEach((k, v) -> jsonEvent.add(k, GSON.toJsonTree(v)));
 			}
-
 			JsonArray tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
 			tags.add("bunyan");
 			jsonEvent.add("tags", tags);
 		}
-		jsonEvent.addProperty("v", 0);
-		jsonEvent.addProperty("level", BUNYAN_LEVEL.get(event.getLevel()));
-		jsonEvent.addProperty("name", event.getLoggerName());
+		jsonEvent.add("v", 0);
+		jsonEvent.add("level", BUNYAN_LEVEL.get(event.getLevel()));
+		jsonEvent.add("name", event.getLoggerName());
 		try {
-			jsonEvent.addProperty("hostname", InetAddress.getLocalHost().getHostName());
+			jsonEvent.add("hostname", InetAddress.getLocalHost().getHostName());
 		} catch (UnknownHostException e) {
-			jsonEvent.addProperty("hostname", "unknown");
+			jsonEvent.add("hostname", "unknown");
 		}
-		jsonEvent.addProperty("pid", event.getThreadId());
-		jsonEvent.addProperty("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
-		jsonEvent.addProperty("message", msg.getFormattedMessage());
-		jsonEvent.addProperty("source", event.getSource().getClassName());
+		jsonEvent.add("pid", event.getThreadId());
+		jsonEvent.add("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
+		jsonEvent.add("message", msg.getFormattedMessage());
+		jsonEvent.add("source", event.getSource().getClassName());
 		if (event.getLevel().isMoreSpecificThan(Level.WARN) && event.getThrown() != null) {
 			JsonObject jsonError = new JsonObject();
 			Throwable e = event.getThrown();
-			jsonError.addProperty("message", e.getMessage());
-			jsonError.addProperty("name", e.getClass().getSimpleName());
+			jsonError.add("message", e.getMessage());
+			jsonError.add("name", e.getClass().getSimpleName());
 			StringWriter sw = new StringWriter();
 			PrintWriter pw = new PrintWriter(sw);
 			e.printStackTrace(pw);
-			jsonError.addProperty("stack", sw.toString());
+			jsonError.add("stack", sw.toString());
 			jsonEvent.add("err", jsonError);
 		}
 		return jsonEvent;
