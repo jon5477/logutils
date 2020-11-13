@@ -3,6 +3,7 @@ package net.rcgsoft.logging.util;
 import static org.junit.Assert.assertEquals;
 
 import java.io.StringWriter;
+import java.util.Date;
 
 import org.junit.Test;
 
@@ -48,5 +49,15 @@ public class SerializationUtilTest {
 		String json = sw.getBuffer().toString();
 //		System.out.println(json);
 		assertEquals(expectJson, json);
+	}
+
+	@Test
+	public void testDateToJsonObject() throws Exception {
+		Date date = new Date();
+		JsonObject jObj = SerializationUtil.toJsonObject(date);
+		StringWriter sw = new StringWriter();
+		jObj.writeTo(sw);
+		String json = sw.getBuffer().toString();
+		System.out.println(json);
 	}
 }
