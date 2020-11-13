@@ -25,14 +25,16 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 public class SlackLayout extends AbstractStringLayout {
 //	private static final Gson gson = new GsonBuilder().create();
 	private static final boolean useBrightColors = true;
+	private int fieldSizeLimit = 0;
 
-	protected SlackLayout() {
+	protected SlackLayout(int fieldSizeLimit) {
 		super(StandardCharsets.UTF_8);
+		this.fieldSizeLimit = fieldSizeLimit;
 	}
 
 	@PluginFactory
-	public static SlackLayout createLayout() {
-		return new SlackLayout();
+	public static SlackLayout createLayout(int payloadSizeLimit) {
+		return new SlackLayout(payloadSizeLimit);
 	}
 
 	private static final String getColorByLevel(Level level) {
@@ -83,7 +85,13 @@ public class SlackLayout extends AbstractStringLayout {
 		// Add Message Field
 		JsonObject msgField = new JsonObject();
 		msgField.add("title", "Message");
-		msgField.add("value", event.getMessage().getFormattedMessage());
+		String fmtMsg = event.getMessage().getFormattedMessage();
+		if (this.fieldSizeLimit > 0) {
+			int endIdx = Math.min(fmtMsg.length(), this.fieldSizeLimit);
+			msgField.add("value", fmtMsg.substring(0, endIdx));
+		} else {
+			msgField.add("value", fmtMsg);
+		}
 		msgField.add("short", false);
 		fields.add(msgField);
 		// Check if Throwable is proxied
@@ -92,7 +100,13 @@ public class SlackLayout extends AbstractStringLayout {
 			// Add Stack Trace Field
 			JsonObject stField = new JsonObject();
 			stField.add("title", "Exception");
-			stField.add("value", tp.getCauseStackTraceAsString(""));
+			String stackTraceStr = tp.getCauseStackTraceAsString("");
+			if (this.fieldSizeLimit > 0) {
+				int endIdx = Math.min(stackTraceStr.length(), this.fieldSizeLimit);
+				stField.add("value", stackTraceStr.substring(0, endIdx));
+			} else {
+				stField.add("value", stackTraceStr);
+			}
 			stField.add("short", false);
 			fields.add(stField);
 		}

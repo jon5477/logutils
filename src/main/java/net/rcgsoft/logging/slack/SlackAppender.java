@@ -60,15 +60,15 @@ public final class SlackAppender extends AbstractAppender {
 		private boolean verifyHostname = true;
 
 		@PluginBuilderAttribute
-		private int limitPayloadSize = 0;
+		private int fieldSizeLimit = 0;
 
-		@SuppressWarnings("resource")
 		@Override
 		public SlackAppender build() {
 			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(),
-					getName(), url, verifyHostname);
-			return new SlackAppender(getName(), SlackLayout.createLayout(), getFilter(), isIgnoreExceptions(),
-					httpManager);
+					getName(), url, method, connectTimeoutMillis, readTimeoutMillis, headers, sslConfiguration,
+					verifyHostname);
+			return new SlackAppender(getName(), SlackLayout.createLayout(fieldSizeLimit), getFilter(),
+					isIgnoreExceptions(), httpManager);
 		}
 
 		public URL getUrl() {
@@ -97,6 +97,10 @@ public final class SlackAppender extends AbstractAppender {
 
 		public boolean isVerifyHostname() {
 			return verifyHostname;
+		}
+
+		public int getFieldSizeLimit() {
+			return fieldSizeLimit;
 		}
 
 		public B setUrl(final URL url) {
@@ -134,8 +138,8 @@ public final class SlackAppender extends AbstractAppender {
 			return asBuilder();
 		}
 
-		public B setLimitPayloadSize(final int limitPayloadSize) {
-			this.limitPayloadSize = limitPayloadSize;
+		public B setFieldSizeLimit(final int fieldSizeLimit) {
+			this.fieldSizeLimit = fieldSizeLimit;
 			return asBuilder();
 		}
 	}
