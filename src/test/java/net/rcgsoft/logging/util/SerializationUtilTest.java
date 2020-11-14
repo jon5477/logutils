@@ -3,11 +3,15 @@ package net.rcgsoft.logging.util;
 import static org.junit.Assert.assertEquals;
 
 import java.io.StringWriter;
-import java.util.Date;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.Calendar;
+import java.util.TimeZone;
 
 import org.junit.Test;
 
 import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
 
 public class SerializationUtilTest {
 	static final class MyObject {
@@ -47,17 +51,28 @@ public class SerializationUtilTest {
 		jObj.writeTo(sw);
 		String expectJson = "{\"bool\":true,\"c\":\".\",\"b\":99,\"s\":7,\"i\":1337,\"l\":13371337,\"f\":183.5,\"d\":19392.14,\"str\":\"Testing\",\"nested\":{\"bool\":false,\"c\":\"\\u0000\",\"b\":0,\"s\":0,\"i\":0,\"l\":0,\"f\":0,\"d\":0,\"str\":null,\"nested\":null}}";
 		String json = sw.getBuffer().toString();
-//		System.out.println(json);
 		assertEquals(expectJson, json);
 	}
 
 	@Test
-	public void testDateToJsonObject() throws Exception {
-		Date date = new Date();
-		JsonObject jObj = SerializationUtil.toJsonObject(date);
+	public void testCalendarToJsonValue() throws Exception {
+		Calendar cal = Calendar.getInstance(TimeZone.getTimeZone(ZoneOffset.UTC));
+		cal.set(2020, 10, 12, 20, 42, 0);
+		cal.set(Calendar.MILLISECOND, 0);
+		JsonValue jsonDate = SerializationUtil.toJsonValue(cal.getClass(), cal);
 		StringWriter sw = new StringWriter();
-		jObj.writeTo(sw);
+		jsonDate.writeTo(sw);
 		String json = sw.getBuffer().toString();
-		System.out.println(json);
+		assertEquals("\"2020-11-12T20:42:00Z\"", json);
+	}
+
+	@Test
+	public void testInstantToJsonValue() throws Exception {
+		ZonedDateTime zdt = ZonedDateTime.of(2020, 11, 12, 20, 42, 0, 0, ZoneOffset.UTC);
+		JsonValue jsonDate = SerializationUtil.toJsonValue(zdt.getClass(), zdt);
+		StringWriter sw = new StringWriter();
+		jsonDate.writeTo(sw);
+		String json = sw.getBuffer().toString();
+		assertEquals("\"2020-11-12T20:42:00Z\"", json);
 	}
 }
