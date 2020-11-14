@@ -263,7 +263,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * but does obtain a monitor in cases where the socket is not available and the
 	 * reconnector thread needs to be started.
 	 */
-	@SuppressWarnings("sync-override")
+	@SuppressWarnings({ "sync-override", "java:S3551" })
 	@Override
 	protected final void write(byte[] bytes, int offset, int length, boolean immediateFlush) {
 		// Fetch the channel for performing the write
@@ -346,7 +346,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		return ch.writeAndFlush(buffer);
 	}
 
-	@SuppressWarnings("sync-override")
+	@SuppressWarnings({ "sync-override", "java:S3551" })
 	@Override
 	protected boolean closeOutputStream() {
 		this.stopReconnector();
@@ -524,7 +524,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				}
 			} catch (InterruptedException e) {
 				// interrupted, we just terminate the loop
-				Thread.interrupted(); // mark the thread as interrupted again
+				Thread.currentThread().interrupt(); // mark the thread as interrupted again
 			} finally {
 				if (shutdown) {
 					NettyTcpSocketManager.this.stopWriter();
