@@ -14,12 +14,12 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
 
-import com.eclipsesource.json.JsonArray;
-import com.eclipsesource.json.JsonObject;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import net.rcgsoft.logging.layout.AbstractJsonLayout;
 import net.rcgsoft.logging.message.ContextualMessage;
-import net.rcgsoft.logging.util.SerializationUtil;
 
 /**
  * A Log4j2 Layout which prints events in Logstash JSON format. The layout takes
@@ -41,42 +41,42 @@ public class LogstashLayout extends AbstractJsonLayout {
 	 * Format the event as a Logstash style JSON object.
 	 */
 	@Override
-	protected final JsonObject formatJson(LogEvent event) {
-		JsonObject jsonEvent = new JsonObject();
+	protected final ObjectNode formatJson(LogEvent event) {
+		ObjectNode jsonEvent = JsonNodeFactory.instance.objectNode();
 		Message msg = event.getMessage();
 		if (msg instanceof ContextualMessage) {
 			Map<String, Object> context = ((ContextualMessage) msg).getContext();
 			if (!context.isEmpty()) {
 				for (Map.Entry<String, Object> entry : context.entrySet()) {
-					jsonEvent.add(entry.getKey(), SerializationUtil.toJsonObject(entry.getValue()));
+					jsonEvent.set(entry.getKey(), JsonNodeFactory.instance.pojoNode(entry.getValue()));
 				}
 			}
-			JsonArray tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
+			ArrayNode tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
 			tags.add("bunyan");
-			jsonEvent.add("tags", tags);
+			jsonEvent.set("tags", tags);
 		}
-		jsonEvent.add("v", 0);
-		jsonEvent.add("level", BUNYAN_LEVEL.get(event.getLevel()));
-		jsonEvent.add("name", event.getLoggerName());
+		jsonEvent.put("v", 0);
+		jsonEvent.put("level", BUNYAN_LEVEL.get(event.getLevel()));
+		jsonEvent.put("name", event.getLoggerName());
 		try {
-			jsonEvent.add("hostname", InetAddress.getLocalHost().getHostName());
+			jsonEvent.put("hostname", InetAddress.getLocalHost().getHostName());
 		} catch (UnknownHostException e) {
-			jsonEvent.add("hostname", "unknown");
+			jsonEvent.put("hostname", "unknown");
 		}
-		jsonEvent.add("pid", event.getThreadId());
-		jsonEvent.add("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
-		jsonEvent.add("message", msg.getFormattedMessage());
-		jsonEvent.add("source", event.getSource().getClassName());
+		jsonEvent.put("pid", event.getThreadId());
+		jsonEvent.put("@timestamp", formatAsIsoUTCDateTime(event.getTimeMillis()));
+		jsonEvent.put("message", msg.getFormattedMessage());
+		jsonEvent.put("source", event.getSource().getClassName());
 		if (event.getLevel().isMoreSpecificThan(Level.WARN) && event.getThrown() != null) {
-			JsonObject jsonError = new JsonObject();
+			ObjectNode jsonError = JsonNodeFactory.instance.objectNode();
 			Throwable e = event.getThrown();
-			jsonError.add("message", e.getMessage());
-			jsonError.add("name", e.getClass().getSimpleName());
+			jsonError.put("message", e.getMessage());
+			jsonError.put("name", e.getClass().getSimpleName());
 			StringWriter sw = new StringWriter();
 			PrintWriter pw = new PrintWriter(sw);
 			e.printStackTrace(pw);
-			jsonError.add("stack", sw.toString());
-			jsonEvent.add("err", jsonError);
+			jsonError.put("stack", sw.toString());
+			jsonEvent.set("err", jsonError);
 		}
 		return jsonEvent;
 	}
