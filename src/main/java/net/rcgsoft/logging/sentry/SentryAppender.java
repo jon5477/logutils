@@ -20,6 +20,7 @@ import org.apache.logging.log4j.core.filter.AbstractFilter;
 import org.apache.logging.log4j.message.Message;
 
 import io.sentry.Sentry;
+import io.sentry.SentryEvent;
 import io.sentry.environment.SentryEnvironment;
 import io.sentry.event.Event;
 import io.sentry.event.EventBuilder;
@@ -122,10 +123,10 @@ public class SentryAppender extends AbstractAppender {
 		if (SentryEnvironment.isManagingThread()) {
 			return;
 		}
-
 		SentryEnvironment.startManagingThread();
 		try {
 			EventBuilder eventBuilder = createEventBuilder(logEvent);
+			Sentry.captureEvent(event)
 			Sentry.capture(eventBuilder);
 		} catch (Exception e) {
 			error("An exception occurred while creating a new event in Sentry", logEvent, e);
@@ -135,13 +136,15 @@ public class SentryAppender extends AbstractAppender {
 	}
 
 	/**
-	 * Builds an EventBuilder based on the logging event.
+	 * Creates a {@code SentryEvent} based on a {@code LogEvent}.
 	 *
-	 * @param event Log generated.
-	 * @return EventBuilder containing details provided by the logging system.
+	 * @param event The log event to map.
+	 * @return a {@code SentryEvent} instance containing details provided by the
+	 *         logging system.
 	 */
-	protected EventBuilder createEventBuilder(LogEvent event) {
+	protected SentryEvent createSentryEvent(LogEvent event) {
 		Message eventMessage = event.getMessage();
+		SentryEvent event = new SentryEvent();
 		EventBuilder eventBuilder = new EventBuilder().withSdkIntegration("log4j2")
 				.withTimestamp(new Date(event.getTimeMillis())).withMessage(eventMessage.getFormattedMessage())
 				.withLogger(event.getLoggerName()).withLevel(formatLevel(event.getLevel()))
