@@ -3,6 +3,12 @@ package net.rcgsoft.logging.util;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * {@code ThreadFactory} for creating daemon-{@code Thread}s.
+ * 
+ * @author Jon Huang
+ *
+ */
 public final class DaemonThreadFactory implements ThreadFactory {
 	private static final AtomicInteger poolNumber = new AtomicInteger(1);
 	private final ThreadGroup group;

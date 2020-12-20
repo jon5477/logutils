@@ -1,4 +1,6 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>net.rcgsoft.logging</groupId>
 	<artifactId>log-utils</artifactId>
@@ -29,7 +31,7 @@
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!--<maven.compiler.release>8</maven.compiler.release> -->
 		<log4j.version>2.14.0</log4j.version>
-		<netty.version>4.1.54.Final</netty.version>
+		<netty.version>4.1.56.Final</netty.version>
 		<async-http-client.version>2.12.1</async-http-client.version>
 		<jackson.version>2.12.0</jackson.version>
 		<sentry.version>1.7.30</sentry.version>
@@ -47,9 +49,21 @@
 			<version>${log4j.version}</version>
 		</dependency>
 		<dependency>
+			<groupId>jakarta.activation</groupId>
+			<artifactId>jakarta.activation-api</artifactId>
+			<version>1.2.2</version>
+		</dependency>
+		<dependency>
 			<groupId>org.asynchttpclient</groupId>
 			<artifactId>async-http-client</artifactId>
 			<version>${async-http-client.version}</version>
+			<exclusions>
+				<!-- Exclude javax.activation for jakarta.activation -->
+				<exclusion>
+					<groupId>com.sun.activation</groupId>
+					<artifactId>javax.activation</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>io.netty</groupId>
@@ -58,7 +72,39 @@
 		</dependency>
 		<dependency>
 			<groupId>io.netty</groupId>
+			<artifactId>netty-codec-http</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-codec-socks</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
 			<artifactId>netty-handler</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-handler-proxy</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-transport-native-epoll</artifactId>
+			<classifier>linux-x86_64</classifier>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-transport-native-kqueue</artifactId>
+			<classifier>osx-x86_64</classifier>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-transport-native-unix-common</artifactId>
 			<version>${netty.version}</version>
 		</dependency>
 		<dependency>
