@@ -4,9 +4,12 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
+import org.apache.logging.log4j.ThreadContext.ContextStack;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
@@ -17,15 +20,15 @@ import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.filter.AbstractFilter;
+import org.apache.logging.log4j.core.impl.ThrowableProxy;
 import org.apache.logging.log4j.message.Message;
 
-import io.sentry.Sentry;
-import io.sentry.environment.SentryEnvironment;
-import io.sentry.event.Event;
-import io.sentry.event.EventBuilder;
-import io.sentry.event.interfaces.ExceptionInterface;
-import io.sentry.event.interfaces.MessageInterface;
-import io.sentry.event.interfaces.StackTraceInterface;
+import io.sentry.Breadcrumb;
+import io.sentry.HubAdapter;
+import io.sentry.IHub;
+import io.sentry.SentryEvent;
+import io.sentry.SentryLevel;
+import io.sentry.protocol.Contexts;
 import net.rcgsoft.logging.message.ContextualMessage;
 
 /**
@@ -40,16 +43,20 @@ public class SentryAppender extends AbstractAppender {
 	/**
 	 * Default name for the appender.
 	 */
-	public static final String APPENDER_NAME = "sentry";
-	public static final String LOG4J_NDC = "log4j2-NDC";
-	public static final String LOG4J_MARKER = "log4j2-Marker";
-	public static final String THREAD_NAME = "Sentry-Threadname";
+	private static final String APPENDER_NAME = "sentry";
+	private static final String LOG4J_CTX_DATA = "context_data";
+	private static final String LOG4J_CTX_STACK = "context_stack";
+	private static final String LOG4J_MARKER = "log_marker";
+	private static final String CTX_MSG = "context_message";
+	private static final String THREAD_NAME = "thread_name";
+
+	private final IHub hub;
 
 	/**
 	 * Creates an instance of SentryAppender.
 	 */
-	public SentryAppender() {
-		this(APPENDER_NAME, null);
+	public SentryAppender(IHub hub) {
+		this(APPENDER_NAME, null, hub);
 	}
 
 	/**
@@ -58,9 +65,10 @@ public class SentryAppender extends AbstractAppender {
 	 * @param name   The Appender name.
 	 * @param filter The Filter to associate with the Appender.
 	 */
-	protected SentryAppender(String name, Filter filter) {
+	protected SentryAppender(String name, Filter filter, IHub hub) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
 		this.addFilter(new DropSentryFilter());
+		this.hub = Objects.requireNonNull(hub, "hub cannot be null");
 	}
 
 	/**
@@ -77,26 +85,26 @@ public class SentryAppender extends AbstractAppender {
 			LOGGER.error("No name provided for SentryAppender");
 			return null;
 		}
-		return new SentryAppender(name, filter);
+		return new SentryAppender(name, filter, HubAdapter.getInstance());
 	}
 
 	/**
-	 * Transforms a {@link Level} into an {@link Event.Level}.
+	 * Transforms a {@link Level} into an {@link SentryLevel}.
 	 *
-	 * @param level original level as defined in log4j2.
-	 * @return log level used within sentry.
+	 * @param level Logging level as defined in Log4J2.
+	 * @return The {@code SentryLevel} log level used within sentry.
 	 */
-	protected static Event.Level formatLevel(Level level) {
+	protected static SentryLevel formatLevel(Level level) {
 		if (level.isMoreSpecificThan(Level.FATAL)) {
-			return Event.Level.FATAL;
+			return SentryLevel.FATAL;
 		} else if (level.isMoreSpecificThan(Level.ERROR)) {
-			return Event.Level.ERROR;
+			return SentryLevel.ERROR;
 		} else if (level.isMoreSpecificThan(Level.WARN)) {
-			return Event.Level.WARNING;
+			return SentryLevel.WARNING;
 		} else if (level.isMoreSpecificThan(Level.INFO)) {
-			return Event.Level.INFO;
+			return SentryLevel.INFO;
 		} else {
-			return Event.Level.DEBUG;
+			return SentryLevel.DEBUG;
 		}
 	}
 
@@ -118,97 +126,66 @@ public class SentryAppender extends AbstractAppender {
 
 	@Override
 	public void append(LogEvent logEvent) {
-		// Do not log the event if the current thread is managed by sentry
-		if (SentryEnvironment.isManagingThread()) {
-			return;
+		if (logEvent.getLevel().isMoreSpecificThan(Level.ERROR)) {
+			hub.captureEvent(createSentryEvent(logEvent));
 		}
-
-		SentryEnvironment.startManagingThread();
-		try {
-			EventBuilder eventBuilder = createEventBuilder(logEvent);
-			Sentry.capture(eventBuilder);
-		} catch (Exception e) {
-			error("An exception occurred while creating a new event in Sentry", logEvent, e);
-		} finally {
-			SentryEnvironment.stopManagingThread();
+		if (logEvent.getLevel().isMoreSpecificThan(Level.INFO)) {
+			hub.addBreadcrumb(createBreadcrumb(logEvent));
 		}
 	}
 
 	/**
-	 * Builds an EventBuilder based on the logging event.
+	 * Builds an {@code SentryEvent} based on the {@code LogEvent}.
 	 *
-	 * @param event Log generated.
-	 * @return EventBuilder containing details provided by the logging system.
+	 * @param logEvent The logging event from Log4J2.
+	 * @return SentryEvent containing details provided by the logging system.
 	 */
-	protected EventBuilder createEventBuilder(LogEvent event) {
-		Message eventMessage = event.getMessage();
-		EventBuilder eventBuilder = new EventBuilder().withSdkIntegration("log4j2")
-				.withTimestamp(new Date(event.getTimeMillis())).withMessage(eventMessage.getFormattedMessage())
-				.withLogger(event.getLoggerName()).withLevel(formatLevel(event.getLevel()))
-				.withExtra(THREAD_NAME, event.getThreadName());
-
-		if (eventMessage.getFormat() != null && !eventMessage.getFormat().equals("")
-				&& !eventMessage.getFormattedMessage().equals(eventMessage.getFormat())) {
-			eventBuilder.withSentryInterface(new MessageInterface(eventMessage.getFormat(),
-					formatMessageParameters(eventMessage.getParameters()), eventMessage.getFormattedMessage()));
+	protected SentryEvent createSentryEvent(LogEvent logEvent) {
+		SentryEvent evt = new SentryEvent(new Date(logEvent.getTimeMillis()));
+		Message logMsg = logEvent.getMessage();
+		io.sentry.protocol.Message msg = new io.sentry.protocol.Message();
+		msg.setMessage(logMsg.getFormat());
+		msg.setFormatted(logMsg.getFormattedMessage());
+		List<String> params = formatMessageParameters(logMsg.getParameters());
+		msg.setParams(params);
+		evt.setMessage(msg);
+		evt.setLogger(logEvent.getLoggerName());
+		evt.setLevel(formatLevel(logEvent.getLevel()));
+		ThrowableProxy thrownProxy = logEvent.getThrownProxy();
+		if (thrownProxy != null) {
+			evt.setThrowable(thrownProxy.getThrowable());
 		}
-
-		Throwable throwable = event.getThrown();
-		if (throwable != null) {
-			eventBuilder.withSentryInterface(new ExceptionInterface(throwable));
-		} else if (event.getSource() != null) {
-			StackTraceElement[] stackTrace = { event.getSource() };
-			eventBuilder.withSentryInterface(new StackTraceInterface(stackTrace));
+		if (logEvent.getThreadName() != null) {
+			evt.setExtra(THREAD_NAME, logEvent.getThreadName());
 		}
-
-		if (event.getContextStack() != null) {
-			eventBuilder.withExtra(LOG4J_NDC, event.getContextStack().asList());
+		Contexts evtCtx = evt.getContexts();
+		Map<String, String> contextData = new ConcurrentHashMap<>(logEvent.getContextData().toMap());
+		if (!contextData.isEmpty()) {
+			evtCtx.put(LOG4J_CTX_DATA, contextData);
 		}
-
-		event.getContextData().forEach((k, v) -> {
-			if (Sentry.getStoredClient().getMdcTags().contains(k)) {
-				eventBuilder.withTag(k, (String) v);
-			} else {
-				eventBuilder.withExtra(k, v);
-			}
-		});
-
-		if (event instanceof ContextualMessage) {
-			Map<String, Object> context = ((ContextualMessage) event).getContext();
+		ContextStack stack = logEvent.getContextStack();
+		if (stack != null) {
+			evtCtx.put(LOG4J_CTX_STACK, stack.asList());
+		}
+		if (logEvent instanceof ContextualMessage) {
+			Map<String, Object> context = new ConcurrentHashMap<>(((ContextualMessage) logEvent).getContext());
 			if (!context.isEmpty()) {
-				context.forEach((k, v) -> {
-					if (v instanceof String) {
-						if (Sentry.getStoredClient().getMdcTags().contains(k)) {
-							eventBuilder.withTag(k, (String) v);
-						} else {
-							eventBuilder.withExtra(k, v);
-						}
-					}
-				});
+				evtCtx.put(CTX_MSG, context);
 			}
 		}
-
-		if (event.getMarker() != null) {
-			eventBuilder.withTag(LOG4J_MARKER, event.getMarker().toString());
+		Marker marker = logEvent.getMarker();
+		if (marker != null) {
+			evtCtx.put(LOG4J_MARKER, marker.toString());
 		}
-
-		return eventBuilder;
+		return evt;
 	}
 
-	@Override
-	public void stop() {
-		SentryEnvironment.startManagingThread();
-		try {
-			if (!isStarted()) {
-				return;
-			}
-			super.stop();
-			Sentry.close();
-		} catch (Exception e) {
-			error("An exception occurred while closing the Sentry connection", e);
-		} finally {
-			SentryEnvironment.stopManagingThread();
-		}
+	private Breadcrumb createBreadcrumb(LogEvent logEvent) {
+		Breadcrumb breadcrumb = new Breadcrumb();
+		breadcrumb.setLevel(formatLevel(logEvent.getLevel()));
+		breadcrumb.setCategory(logEvent.getLoggerName());
+		breadcrumb.setMessage(logEvent.getMessage().getFormattedMessage());
+		return breadcrumb;
 	}
 
 	private class DropSentryFilter extends AbstractFilter {
