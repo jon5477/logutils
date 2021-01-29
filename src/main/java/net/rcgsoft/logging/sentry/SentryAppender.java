@@ -26,6 +26,7 @@ import org.apache.logging.log4j.message.Message;
 import io.sentry.Breadcrumb;
 import io.sentry.HubAdapter;
 import io.sentry.IHub;
+import io.sentry.Sentry;
 import io.sentry.SentryEvent;
 import io.sentry.SentryLevel;
 import io.sentry.protocol.Contexts;
@@ -36,6 +37,7 @@ import net.rcgsoft.logging.message.ContextualMessage;
  * server.
  * 
  * @author David Xu
+ * @author Jon Huang
  *
  */
 @Plugin(name = "Sentry", category = "Core", elementType = "appender", printObject = true)
@@ -50,13 +52,14 @@ public class SentryAppender extends AbstractAppender {
 	private static final String CTX_MSG = "context_message";
 	private static final String THREAD_NAME = "thread_name";
 
+	private final String dsn;
 	private final IHub hub;
 
 	/**
 	 * Creates an instance of SentryAppender.
 	 */
 	public SentryAppender(IHub hub) {
-		this(APPENDER_NAME, null, hub);
+		this(APPENDER_NAME, null, null, hub);
 	}
 
 	/**
@@ -65,9 +68,10 @@ public class SentryAppender extends AbstractAppender {
 	 * @param name   The Appender name.
 	 * @param filter The Filter to associate with the Appender.
 	 */
-	protected SentryAppender(String name, Filter filter, IHub hub) {
+	protected SentryAppender(String name, String dsn, Filter filter, IHub hub) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
 		this.addFilter(new DropSentryFilter());
+		this.dsn = dsn;
 		this.hub = Objects.requireNonNull(hub, "hub cannot be null");
 	}
 
@@ -80,12 +84,12 @@ public class SentryAppender extends AbstractAppender {
 	 */
 	@PluginFactory
 	public static SentryAppender createAppender(@PluginAttribute("name") final String name,
-			@PluginElement("filter") final Filter filter) {
+			@PluginAttribute("dsn") final String dsn, @PluginElement("filter") final Filter filter) {
 		if (name == null) {
 			LOGGER.error("No name provided for SentryAppender");
 			return null;
 		}
-		return new SentryAppender(name, filter, HubAdapter.getInstance());
+		return new SentryAppender(name, dsn, filter, HubAdapter.getInstance());
 	}
 
 	/**
@@ -122,6 +126,17 @@ public class SentryAppender extends AbstractAppender {
 			stringParameters.add((parameter != null) ? parameter.toString() : null);
 		}
 		return stringParameters;
+	}
+
+	@Override
+	public void start() {
+		if (!Sentry.isEnabled()) {
+			Sentry.init(opt -> {
+				opt.setEnableExternalConfiguration(true);
+				opt.setDsn(dsn);
+			});
+		}
+		super.start();
 	}
 
 	@Override
