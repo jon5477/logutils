@@ -31,16 +31,16 @@
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!--<maven.compiler.release>8</maven.compiler.release> -->
 		<log4j.version>2.14.0</log4j.version>
-		<netty.version>4.1.58.Final</netty.version>
+		<netty.version>4.1.59.Final</netty.version>
 		<async-http-client.version>2.12.2</async-http-client.version>
 		<jackson.version>2.12.1</jackson.version>
-		<sentry.version>4.0.0</sentry.version>
+		<sentry.version>4.1.0</sentry.version>
 	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.13.1</version>
+			<version>4.13.2</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
