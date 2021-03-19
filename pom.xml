@@ -30,11 +30,11 @@
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!--<maven.compiler.release>8</maven.compiler.release> -->
-		<log4j.version>2.14.0</log4j.version>
-		<netty.version>4.1.59.Final</netty.version>
+		<log4j.version>2.14.1</log4j.version>
+		<netty.version>4.1.60.Final</netty.version>
 		<async-http-client.version>2.12.2</async-http-client.version>
-		<jackson.version>2.12.1</jackson.version>
-		<sentry.version>4.2.0</sentry.version>
+		<jackson.version>2.12.2</jackson.version>
+		<sentry.version>4.3.0</sentry.version>
 	</properties>
 	<dependencies>
 		<dependency>
