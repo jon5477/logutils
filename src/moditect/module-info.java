@@ -21,5 +21,4 @@ module net.rcgsoft.logutils {
 
 	// Unstable modules
 	requires async.http.client;
-	requires tape;
 }
