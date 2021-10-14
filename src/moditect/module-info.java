@@ -14,11 +14,11 @@ module net.rcgsoft.logutils {
 	requires io.netty.common;
 	requires io.netty.handler;
 	requires io.netty.transport;
-	requires io.sentry;
 	requires org.apache.logging.log4j;
-	requires transitive org.apache.logging.log4j.core;
+	requires org.apache.logging.log4j.core;
 	requires org.reactivestreams;
 
 	// Unstable modules
 	requires async.http.client;
+	requires sentry;
 }
