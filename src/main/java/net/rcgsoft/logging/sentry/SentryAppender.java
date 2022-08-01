@@ -71,7 +71,7 @@ public class SentryAppender extends AbstractAppender {
 	protected SentryAppender(String name, String dsn, Filter filter, IHub hub) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
 		this.addFilter(new DropSentryFilter());
-		this.dsn = dsn;
+		this.dsn = Objects.requireNonNull(dsn, "dsn cannot be null");
 		this.hub = Objects.requireNonNull(hub, "hub cannot be null");
 	}
 
@@ -89,7 +89,7 @@ public class SentryAppender extends AbstractAppender {
 			LOGGER.error("No name provided for SentryAppender");
 			return null;
 		}
-		return new SentryAppender(name, dsn, filter, HubAdapter.getInstance());
+		return new SentryAppender(name, dsn != null ? dsn : "", filter, HubAdapter.getInstance());
 	}
 
 	/**
