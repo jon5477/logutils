@@ -672,6 +672,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 							.createSocket(socketAddress, data.socketOptions, data.connectTimeoutMillis,
 									data.writerTimeoutMillis, data.bufLowWaterMark, data.bufHighWaterMark)
 							.syncUninterruptibly().channel();
+				} catch (InterruptedException ex) {
+					e = ex;
+					Thread.currentThread().interrupt();
 				} catch (Exception ex) {
 					e = ex;
 				}
