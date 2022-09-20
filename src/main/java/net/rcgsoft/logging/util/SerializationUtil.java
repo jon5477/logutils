@@ -12,8 +12,23 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
  *
  */
 public final class SerializationUtil {
-	private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder().addModule(new JavaTimeModule())
-			.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false).build();
+	private static final ObjectMapper OBJECT_MAPPER;
+
+	static {
+		JsonMapper.Builder b = JsonMapper.builder();
+		// Add JSR-310 module
+		b.addModule(new JavaTimeModule());
+		// Detect is GSON is on the classpath
+		try {
+			Class.forName("com.google.gson.JsonElement");
+			// Add GSON compatibility module
+			b.addModule(new GsonInteropModule());
+		} catch (ClassNotFoundException e) {
+			// no need to handle, GSON doesn't exist on CP
+		}
+		b.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+		OBJECT_MAPPER = b.build();
+	}
 
 	private SerializationUtil() {
 		// static utility class

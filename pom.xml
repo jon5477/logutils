@@ -28,17 +28,24 @@
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!--<maven.compiler.release>8</maven.compiler.release> -->
-		<log4j.version>2.18.0</log4j.version>
-		<netty.version>4.1.79.Final</netty.version>
+		<log4j.version>2.19.0</log4j.version>
+		<netty.version>4.1.82.Final</netty.version>
 		<async-http-client.version>2.12.3</async-http-client.version>
-		<jackson.version>2.13.3</jackson.version>
-		<sentry.version>6.3.0</sentry.version>
+		<jackson.version>2.13.4</jackson.version>
+		<gson.version>2.9.1</gson.version>
+		<sentry.version>6.4.2</sentry.version>
 	</properties>
 	<dependencies>
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>4.13.2</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<version>4.8.0</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -122,6 +129,12 @@
 			<groupId>com.fasterxml.jackson.datatype</groupId>
 			<artifactId>jackson-datatype-jsr310</artifactId>
 			<version>${jackson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>${gson.version}</version>
+			<optional>true</optional>
 		</dependency>
 		<dependency>
 			<groupId>io.sentry</groupId>
