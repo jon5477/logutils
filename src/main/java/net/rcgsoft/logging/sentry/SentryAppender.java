@@ -161,8 +161,11 @@ public class SentryAppender extends AbstractAppender {
 		io.sentry.protocol.Message msg = new io.sentry.protocol.Message();
 		msg.setMessage(logMsg.getFormat());
 		msg.setFormatted(logMsg.getFormattedMessage());
-		List<String> params = formatMessageParameters(logMsg.getParameters());
-		msg.setParams(params);
+		Object[] paramsArr = logMsg.getParameters();
+		if (paramsArr != null) {
+			List<String> params = formatMessageParameters(paramsArr);
+			msg.setParams(params);
+		}
 		evt.setMessage(msg);
 		evt.setLogger(logEvent.getLoggerName());
 		evt.setLevel(formatLevel(logEvent.getLevel()));
