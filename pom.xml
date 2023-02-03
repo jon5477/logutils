@@ -29,11 +29,11 @@
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!--<maven.compiler.release>8</maven.compiler.release> -->
 		<log4j.version>2.19.0</log4j.version>
-		<netty.version>4.1.82.Final</netty.version>
+		<netty.version>4.1.87.Final</netty.version>
 		<async-http-client.version>2.12.3</async-http-client.version>
-		<jackson.version>2.13.4</jackson.version>
-		<gson.version>2.9.1</gson.version>
-		<sentry.version>6.4.2</sentry.version>
+		<jackson.version>2.14.2</jackson.version>
+		<gson.version>2.10.1</gson.version>
+		<sentry.version>6.13.0</sentry.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -45,7 +45,7 @@
 		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-core</artifactId>
-			<version>4.8.0</version>
+			<version>5.1.1</version>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
@@ -56,17 +56,22 @@
 		<dependency>
 			<groupId>jakarta.activation</groupId>
 			<artifactId>jakarta.activation-api</artifactId>
-			<version>1.2.2</version>
+			<version>2.1.1</version>
+		</dependency>
+		<dependency>
+			<groupId>com.sun.activation</groupId>
+			<artifactId>jakarta.activation</artifactId>
+			<version>2.0.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.asynchttpclient</groupId>
 			<artifactId>async-http-client</artifactId>
 			<version>${async-http-client.version}</version>
 			<exclusions>
-				<!-- Exclude javax.activation for jakarta.activation -->
+				<!-- Exclude older version of jakarta.activation -->
 				<exclusion>
 					<groupId>com.sun.activation</groupId>
-					<artifactId>javax.activation</artifactId>
+					<artifactId>jakarta.activation</artifactId>
 				</exclusion>
 			</exclusions>
 		</dependency>
