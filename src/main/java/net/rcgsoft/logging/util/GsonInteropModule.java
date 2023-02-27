@@ -12,10 +12,10 @@ import net.rcgsoft.logging.util.ser.GsonJsonElementSerializer;
  * @author Jon Huang
  *
  */
-public class GsonInteropModule extends SimpleModule {
+class GsonInteropModule extends SimpleModule {
 	private static final long serialVersionUID = 1L;
 
-	public GsonInteropModule() {
+	GsonInteropModule() {
 		super("gson-interop");
 		addSerializer(JsonElement.class, new GsonJsonElementSerializer());
 	}

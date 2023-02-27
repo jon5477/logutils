@@ -9,6 +9,7 @@ module net.rcgsoft.logutils {
 
 	requires transitive com.fasterxml.jackson.databind;
 	requires com.fasterxml.jackson.datatype.jsr310;
+	requires static com.google.gson;
 	requires io.netty.buffer;
 	requires io.netty.codec.http;
 	requires io.netty.common;
@@ -20,5 +21,5 @@ module net.rcgsoft.logutils {
 
 	// Unstable modules
 	requires async.http.client;
-	requires sentry;
+	requires static sentry;
 }

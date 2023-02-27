@@ -10,6 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext.ContextStack;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
@@ -40,7 +42,7 @@ import net.rcgsoft.logging.message.ContextualMessage;
  * @author Jon Huang
  *
  */
-@Plugin(name = "Sentry", category = "Core", elementType = "appender", printObject = true)
+@Plugin(name = "Sentry", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE, printObject = true)
 public class SentryAppender extends AbstractAppender {
 	/**
 	 * Default name for the appender.
@@ -57,9 +59,11 @@ public class SentryAppender extends AbstractAppender {
 
 	/**
 	 * Creates an instance of SentryAppender.
+	 * 
+	 * @param hub The Sentry Hub instance.
 	 */
 	public SentryAppender(IHub hub) {
-		this(APPENDER_NAME, null, null, hub);
+		this(APPENDER_NAME, "", null, hub);
 	}
 
 	/**
@@ -67,6 +71,7 @@ public class SentryAppender extends AbstractAppender {
 	 *
 	 * @param name   The Appender name.
 	 * @param filter The Filter to associate with the Appender.
+	 * @param hub    The Sentry Hub instance.
 	 */
 	protected SentryAppender(String name, String dsn, Filter filter, IHub hub) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
@@ -76,11 +81,12 @@ public class SentryAppender extends AbstractAppender {
 	}
 
 	/**
-	 * Create a Sentry Appender.
-	 *
+	 * Creates a new Sentry Appender.
+	 * 
 	 * @param name   The name of the Appender.
+	 * @param dsn    The Sentry DSN.
 	 * @param filter The filter, if any, to use.
-	 * @return The SentryAppender.
+	 * @return The {@code SentryAppender} instance.
 	 */
 	@PluginFactory
 	public static SentryAppender createAppender(@PluginAttribute("name") final String name,
@@ -173,8 +179,9 @@ public class SentryAppender extends AbstractAppender {
 		if (thrownProxy != null) {
 			evt.setThrowable(thrownProxy.getThrowable());
 		}
-		if (logEvent.getThreadName() != null) {
-			evt.setExtra(THREAD_NAME, logEvent.getThreadName());
+		String threadName = logEvent.getThreadName();
+		if (threadName != null) {
+			evt.setExtra(THREAD_NAME, threadName);
 		}
 		Contexts evtCtx = evt.getContexts();
 		Map<String, String> contextData = new ConcurrentHashMap<>(logEvent.getContextData().toMap());
@@ -182,11 +189,14 @@ public class SentryAppender extends AbstractAppender {
 			evtCtx.put(LOG4J_CTX_DATA, contextData);
 		}
 		ContextStack stack = logEvent.getContextStack();
-		if (stack != null) {
-			evtCtx.put(LOG4J_CTX_STACK, stack.asList());
+		List<String> stackList = stack.asList();
+		Map<Integer, String> contextStack = new ConcurrentHashMap<>();
+		for (int i = 0, n = stackList.size(); i < n; i++) {
+			contextStack.put(i, stackList.get(i));
 		}
-		if (logEvent instanceof ContextualMessage) {
-			Map<String, Object> context = new ConcurrentHashMap<>(((ContextualMessage) logEvent).getContext());
+		evtCtx.put(LOG4J_CTX_STACK, contextStack);
+		if (logMsg instanceof ContextualMessage) {
+			Map<String, Object> context = new ConcurrentHashMap<>(((ContextualMessage) logMsg).getContext());
 			if (!context.isEmpty()) {
 				evtCtx.put(CTX_MSG, context);
 			}
