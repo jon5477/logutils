@@ -468,6 +468,11 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		private final List<InetSocketAddress> getResolvedHosts() throws UnknownHostException {
 			return NettyTcpSocketManager.resolveHost(host, port);
 		}
+
+		private final ChannelFuture createSocket(final InetSocketAddress socketAddress) {
+			return NettyTcpSocketManager.createSocket(socketAddress, socketOptions, connectTimeoutMillis,
+					writerTimeoutMillis, bufLowWaterMark, bufHighWaterMark);
+		}
 	}
 
 	private final class QueueWriter implements Runnable {
@@ -530,11 +535,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 				}
 			}
 		}
-	}
-
-	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) {
-		return createSocket(socketAddress, socketOptions, connectTimeoutMillis, writerTimeoutMillis, bufLowWaterMark,
-				bufHighWaterMark);
 	}
 
 	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
