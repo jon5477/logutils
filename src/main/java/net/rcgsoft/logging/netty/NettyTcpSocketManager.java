@@ -443,9 +443,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 								channelRef.set(ch);
 								shutdown = true;
 								break;
-							} else {
-								LOGGER.debug("Failed to connect. Channel not active");
 							}
+							LOGGER.debug("Failed to connect. Channel not active");
 						} else {
 							Throwable cause = cf.cause();
 							LOGGER.debug("Failed to connect: {}", cause.getLocalizedMessage(), cause);
@@ -533,14 +532,14 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) throws InterruptedException {
+	private final ChannelFuture createSocket(final InetSocketAddress socketAddress) {
 		return createSocket(socketAddress, socketOptions, connectTimeoutMillis, writerTimeoutMillis, bufLowWaterMark,
 				bufHighWaterMark);
 	}
 
 	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
 			final SocketOptions socketOptions, final int connectTimeoutMillis, final int writerTimeoutMillis,
-			final int bufLowWaterMark, final int bufHighWaterMark) throws InterruptedException {
+			final int bufLowWaterMark, final int bufHighWaterMark) {
 		LOGGER.debug("Creating socket {}", socketAddress.toString());
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class)
@@ -672,9 +671,6 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 							.createSocket(socketAddress, data.socketOptions, data.connectTimeoutMillis,
 									data.writerTimeoutMillis, data.bufLowWaterMark, data.bufHighWaterMark)
 							.syncUninterruptibly().channel();
-				} catch (InterruptedException ex) {
-					e = ex;
-					Thread.currentThread().interrupt();
 				} catch (Exception ex) {
 					e = ex;
 				}

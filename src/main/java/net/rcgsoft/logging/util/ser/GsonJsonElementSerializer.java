@@ -25,7 +25,7 @@ public final class GsonJsonElementSerializer extends JsonSerializer<JsonElement>
 	@Override
 	public final void serialize(JsonElement value, JsonGenerator gen, SerializerProvider serializers)
 			throws IOException {
-		serializeJsonElement(gen, (JsonElement) value);
+		serializeJsonElement(gen, value);
 	}
 
 	private void serializeJsonElement(JsonGenerator gen, JsonElement elem) throws IOException {
