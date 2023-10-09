@@ -5,6 +5,11 @@ import java.util.concurrent.CompletableFuture;
 
 import org.apache.hc.core5.concurrent.FutureCallback;
 
+/**
+ * 
+ * @author Jon Huang
+ *
+ */
 public final class Hc5FutureCallback<T> implements FutureCallback<T> {
 	private final CompletableFuture<T> cf;
 

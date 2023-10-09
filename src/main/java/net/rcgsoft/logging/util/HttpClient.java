@@ -40,7 +40,9 @@ import org.slf4j.LoggerFactory;
 import io.netty.handler.codec.http.HttpHeaderNames;
 
 /**
+ * 
  * @author Jon Huang
+ *
  */
 public class HttpClient implements Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(HttpClient.class);
