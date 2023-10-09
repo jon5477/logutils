@@ -2,6 +2,9 @@ package net.rcgsoft.logging.slack;
 
 import java.io.IOException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
@@ -10,15 +13,8 @@ import org.apache.logging.log4j.core.appender.HttpManager;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.net.ssl.SslConfiguration;
-import org.asynchttpclient.AsyncHttpClient;
-import org.asynchttpclient.DefaultAsyncHttpClientConfig;
-import org.asynchttpclient.Dsl;
-import org.asynchttpclient.ListenableFuture;
-import org.asynchttpclient.RequestBuilder;
-import org.asynchttpclient.Response;
 
-import io.netty.handler.codec.http.HttpHeaderNames;
-import net.rcgsoft.logging.util.DaemonThreadFactory;
+import net.rcgsoft.logging.util.HttpClient;
 
 /**
  * 
@@ -26,28 +22,21 @@ import net.rcgsoft.logging.util.DaemonThreadFactory;
  *
  */
 public final class SlackManager extends HttpManager {
-	private final AsyncHttpClient client;
+	private final HttpClient client;
 	private final URL url;
 	private final String method;
 	private final Property[] headers;
+	private final boolean blockingHttp;
 
 	protected SlackManager(Configuration configuration, LoggerContext loggerContext, String name, URL url,
 			String method, int connectTimeoutMillis, int readTimeoutMillis, Property[] headers,
-			SslConfiguration sslConf, boolean verifyHostname) {
+			SslConfiguration sslConf, boolean verifyHostname, boolean blockingHttp) {
 		super(configuration, loggerContext, name);
-		DefaultAsyncHttpClientConfig.Builder cfgBuilder = new DefaultAsyncHttpClientConfig.Builder();
 		this.url = url;
 		this.method = method;
 		this.headers = headers;
-		if (connectTimeoutMillis > 0) {
-			cfgBuilder.setConnectTimeout(connectTimeoutMillis);
-		}
-		if (readTimeoutMillis > 0) {
-			cfgBuilder.setReadTimeout(readTimeoutMillis);
-		}
-		cfgBuilder.setDisableHttpsEndpointIdentificationAlgorithm(!verifyHostname);
-		cfgBuilder.setThreadFactory(new DaemonThreadFactory());
-		this.client = Dsl.asyncHttpClient(cfgBuilder.build());
+		this.client = new HttpClient(connectTimeoutMillis, readTimeoutMillis, verifyHostname);
+		this.blockingHttp = blockingHttp;
 	}
 
 	@Override
@@ -63,17 +52,16 @@ public final class SlackManager extends HttpManager {
 
 	@Override
 	public final void send(Layout<?> layout, LogEvent event) throws Exception {
-		RequestBuilder reqBuilder = Dsl.request(method, url.toString()).addHeader(HttpHeaderNames.CONTENT_TYPE,
-				layout.getContentType());
+		List<Property> headers = new ArrayList<>();
 		if (this.headers != null) {
 			for (Property header : this.headers) {
-				reqBuilder.addHeader(header.getName(), header.getValue());
+				headers.add(header);
 			}
 		}
-		reqBuilder.setBody(layout.toByteArray(event));
-		ListenableFuture<Response> respFuture = client.executeRequest(reqBuilder);
-		// TODO Find an alternative to blocking here
-		// if we don't block here the JVM will exit because the Timer is a daemon thread
-		respFuture.get();
+		CompletableFuture<?> request = this.client.makeRequest(method, headers, url, layout, event);
+		// Wait for HTTP response to arrive (if enabled)
+		if (this.blockingHttp) {
+			request.get();
+		}
 	}
 }

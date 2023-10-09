@@ -62,11 +62,14 @@ public final class SlackAppender extends AbstractAppender {
 		@PluginBuilderAttribute
 		private int fieldSizeLimit = 0;
 
+		@PluginBuilderAttribute
+		private boolean blockingHttp = false;
+
 		@Override
 		public SlackAppender build() {
 			final HttpManager httpManager = new SlackManager(getConfiguration(), getConfiguration().getLoggerContext(),
 					getName(), url, method, connectTimeoutMillis, readTimeoutMillis, headers, sslConfiguration,
-					verifyHostname);
+					verifyHostname, blockingHttp);
 			return new SlackAppender(getName(), SlackLayout.createLayout(fieldSizeLimit), getFilter(),
 					isIgnoreExceptions(), httpManager);
 		}
@@ -140,6 +143,11 @@ public final class SlackAppender extends AbstractAppender {
 
 		public B setFieldSizeLimit(final int fieldSizeLimit) {
 			this.fieldSizeLimit = fieldSizeLimit;
+			return asBuilder();
+		}
+
+		public B setBlockingHttp(final boolean blockingHttp) {
+			this.blockingHttp = blockingHttp;
 			return asBuilder();
 		}
 	}
