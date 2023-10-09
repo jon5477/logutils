@@ -35,7 +35,7 @@ public final class SlackManager extends HttpManager {
 		this.url = url;
 		this.method = method;
 		this.headers = headers;
-		this.client = new HttpClient(connectTimeoutMillis, readTimeoutMillis);
+		this.client = new HttpClient(connectTimeoutMillis, readTimeoutMillis, verifyHostname);
 		this.blockingHttp = blockingHttp;
 	}
 

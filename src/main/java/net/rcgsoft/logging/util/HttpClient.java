@@ -2,23 +2,29 @@ package net.rcgsoft.logging.util;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadFactory;
 
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
-import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.reactor.IOReactorStatus;
 import org.apache.hc.core5.util.Timeout;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.concurrent.FutureCallback;
+import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.message.BasicHeader;
+import org.apache.http.protocol.HTTP;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Property;
@@ -47,17 +53,29 @@ public class HttpClient implements Closeable {
 	 * 
 	 * @param connectTimeoutMillis The connect timeout in milliseconds
 	 * @param readTimeoutMillis    The read timeout in milliseconds
+	 * @param verifyHostname       {@code true} if the hostname should be verified
+	 *                             in SSL/TLS connections
 	 * @return the {@link AsyncHttpClient} instance or {@code null}
 	 */
-	private AsyncHttpClient buildAsyncHttpClient(int connectTimeoutMillis, int readTimeoutMillis) {
+	private AsyncHttpClient buildAsyncHttpClient(int connectTimeoutMillis, int readTimeoutMillis,
+			boolean verifyHostname) {
 		try {
 			Class.forName("org.asynchttpclient.AsyncHttpClient");
 			Class<?> dslClass = Class.forName("org.asynchttpclient.Dsl");
-			Object cfgBuilder = Class.forName("org.asynchttpclient.DefaultAsyncHttpClientConfig.Builder")
-					.getConstructor().newInstance();
+			Class<?> bldrClass = Class.forName("org.asynchttpclient.DefaultAsyncHttpClientConfig$Builder");
+			Object cfgBuilder = bldrClass.getConstructor().newInstance();
+			if (connectTimeoutMillis > 0) {
+				bldrClass.getMethod("setConnectTimeout", int.class).invoke(cfgBuilder, connectTimeoutMillis);
+			}
+			if (readTimeoutMillis > 0) {
+				bldrClass.getMethod("setReadTimeout", int.class).invoke(cfgBuilder, readTimeoutMillis);
+			}
+			bldrClass.getMethod("setDisableHttpsEndpointIdentificationAlgorithm", boolean.class).invoke(cfgBuilder,
+					!verifyHostname);
+			bldrClass.getMethod("setThreadFactory", ThreadFactory.class).invoke(cfgBuilder, new DaemonThreadFactory());
 			java.lang.reflect.Method asyncHttpClientMethod = dslClass.getMethod("asyncHttpClient",
 					DefaultAsyncHttpClientConfig.Builder.class);
-			return (AsyncHttpClient) asyncHttpClientMethod.invoke(cfgBuilder);
+			return (AsyncHttpClient) asyncHttpClientMethod.invoke(null, cfgBuilder);
 		} catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException
 				| IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
 			// Not loaded on the classpath
@@ -71,18 +89,20 @@ public class HttpClient implements Closeable {
 	 * 
 	 * @param connectTimeoutMillis The connect timeout in milliseconds
 	 * @param readTimeoutMillis    The read timeout in milliseconds
+	 * @param verifyHostname       {@code true} if the hostname should be verified
+	 *                             in SSL/TLS connections
 	 * @return the
 	 *         {@link org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient}
 	 *         instance or {@code null}
 	 */
 	private org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient buildApacheHC5Client(
-			int connectTimeoutMillis, int readTimeoutMillis) {
+			int connectTimeoutMillis, int readTimeoutMillis, boolean verifyHostname) {
 		try {
 			Class.forName("org.apache.hc.core5.reactor.IOReactorConfig");
 			Class.forName("org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient");
 			Class.forName("org.apache.hc.client5.http.impl.async.HttpAsyncClients");
-			IOReactorConfig ioReactorConfig = IOReactorConfig.custom().setIoThreadCount(4)
-					.setSoTimeout(Timeout.ofSeconds(5)).build();
+			IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
+					.setSoTimeout(Timeout.ofMilliseconds(readTimeoutMillis)).build();
 			org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient client = org.apache.hc.client5.http.impl.async.HttpAsyncClients
 					.custom().setIOReactorConfig(ioReactorConfig).build();
 			return client;
@@ -98,9 +118,12 @@ public class HttpClient implements Closeable {
 	 * 
 	 * @param connectTimeoutMillis The connect timeout in milliseconds
 	 * @param readTimeoutMillis    The read timeout in milliseconds
+	 * @param verifyHostname       {@code true} if the hostname should be verified
+	 *                             in SSL/TLS connections
 	 * @return the {@link CloseableHttpAsyncClient} instance or {@code null}
 	 */
-	private CloseableHttpAsyncClient buildApacheHCClient(int connectTimeoutMillis, int readTimeoutMillis) {
+	private CloseableHttpAsyncClient buildApacheHC4Client(int connectTimeoutMillis, int readTimeoutMillis,
+			boolean verifyHostname) {
 		try {
 			Class.forName("org.apache.http.impl.nio.client.CloseableHttpAsyncClient");
 			Class.forName("org.apache.http.impl.nio.client.HttpAsyncClients");
@@ -108,20 +131,28 @@ public class HttpClient implements Closeable {
 			return client;
 		} catch (ClassNotFoundException e) {
 			// Not loaded on the classpath
-			e.printStackTrace();
 			return null;
 		}
 	}
 
-	public HttpClient(int connectTimeoutMillis, int readTimeoutMillis) {
+	/**
+	 * Creates a new dynamic HTTP client that dynamically utilizes AsyncHttpClient
+	 * (AHC), or Apache HTTP Client 4.x/5.x
+	 * 
+	 * @param connectTimeoutMillis The connection timeout in milliseconds
+	 * @param readTimeoutMillis    The read timeout in milliseconds
+	 * @param verifyHostname       {@code true} if the hostname should be verified
+	 *                             in SSL/TLS connections
+	 */
+	public HttpClient(int connectTimeoutMillis, int readTimeoutMillis, boolean verifyHostname) {
 		// Determine the underlying HTTP client to use based on what classes we have
 		// loaded
 		// Prefer AHC since this is non-blocking and uses Netty
-		this.client = buildAsyncHttpClient(connectTimeoutMillis, readTimeoutMillis);
+		this.client = buildAsyncHttpClient(connectTimeoutMillis, readTimeoutMillis, verifyHostname);
 		// Fallback to Apache Async HTTP Client 5.x
 		if (this.client == null) {
 			org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient client = buildApacheHC5Client(
-					connectTimeoutMillis, readTimeoutMillis);
+					connectTimeoutMillis, readTimeoutMillis, verifyHostname);
 			if (client != null) {
 				LOGGER.debug("Loaded Apache Async HTTP Client 5.x");
 			}
@@ -131,11 +162,15 @@ public class HttpClient implements Closeable {
 		}
 		// Fallback to Apache Async HTTP Client 4.x
 		if (this.client == null && this.httpClient5 == null) {
-			CloseableHttpAsyncClient client = buildApacheHCClient(connectTimeoutMillis, readTimeoutMillis);
+			CloseableHttpAsyncClient client = buildApacheHC4Client(connectTimeoutMillis, readTimeoutMillis,
+					verifyHostname);
 			if (client != null) {
 				LOGGER.debug("Loaded Apache Async HTTP Client 4.x");
 			}
 			this.httpClient4 = client;
+		}
+		if (this.client == null && this.httpClient5 == null && this.httpClient4 == null) {
+			throw new RuntimeException("Unable to locate suitable HTTP client");
 		}
 	}
 
@@ -147,7 +182,7 @@ public class HttpClient implements Closeable {
 		if (this.httpClient5 != null) {
 			return this.makeApacheHC5Request(httpMethod, httpHeaders, url, layout, event);
 		}
-		return this.makeApacheHCRequest(httpMethod, httpHeaders, url, layout, event);
+		return this.makeApacheHC4Request(httpMethod, httpHeaders, url, layout, event);
 	}
 
 	private CompletableFuture<Response> makeAHCRequest(String httpMethod, List<Property> httpHeaders, URL url,
@@ -164,6 +199,18 @@ public class HttpClient implements Closeable {
 		return respFuture.toCompletableFuture();
 	}
 
+	@SuppressWarnings("unchecked")
+	private <T> T makeCallback(String className, CompletableFuture<?> cf) {
+		try {
+			Class<?> cbClass = Class.forName(className);
+			Constructor<?> cstr = cbClass.getConstructor(CompletableFuture.class);
+			return (T) cstr.newInstance(cf);
+		} catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException
+				| IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	private CompletableFuture<SimpleHttpResponse> makeApacheHC5Request(String httpMethod, List<Property> httpHeaders,
 			URL url, Layout<?> layout, LogEvent event) {
 		if (this.httpClient5.getStatus() == IOReactorStatus.INACTIVE) {
@@ -174,22 +221,8 @@ public class HttpClient implements Closeable {
 			SimpleHttpRequest request = SimpleRequestBuilder.create(httpMethod).setUri(url.toURI())
 					.setAbsoluteRequestUri(true)
 					.setBody(layout.toByteArray(event), ContentType.parse(layout.getContentType())).build();
-			org.apache.hc.core5.concurrent.FutureCallback<SimpleHttpResponse> callback = new org.apache.hc.core5.concurrent.FutureCallback<SimpleHttpResponse>() {
-				@Override
-				public final void completed(SimpleHttpResponse result) {
-					cf.complete(result);
-				}
-
-				@Override
-				public final void failed(Exception ex) {
-					cf.completeExceptionally(ex);
-				}
-
-				@Override
-				public final void cancelled() {
-					cf.cancel(false);
-				}
-			};
+			org.apache.hc.core5.concurrent.FutureCallback<SimpleHttpResponse> callback = makeCallback(
+					"net.rcgsoft.logging.util.http.Hc5FutureCallback", cf);
 			this.httpClient5.execute(request, callback);
 		} catch (URISyntaxException e) {
 			cf.completeExceptionally(e);
@@ -197,7 +230,7 @@ public class HttpClient implements Closeable {
 		return cf;
 	}
 
-	private CompletableFuture<HttpResponse> makeApacheHCRequest(String httpMethod, List<Property> httpHeaders, URL url,
+	private CompletableFuture<HttpResponse> makeApacheHC4Request(String httpMethod, List<Property> httpHeaders, URL url,
 			Layout<?> layout, LogEvent event) {
 		if (!this.httpClient4.isRunning()) {
 			this.httpClient4.start();
@@ -205,22 +238,13 @@ public class HttpClient implements Closeable {
 		CompletableFuture<HttpResponse> cf = new CompletableFuture<>();
 		try {
 			HttpPost request = new HttpPost(url.toURI());
-			org.apache.http.concurrent.FutureCallback<SimpleHttpResponse> callback = new org.apache.http.concurrent.FutureCallback<SimpleHttpResponse>() {
-				@Override
-				public final void completed(SimpleHttpResponse result) {
-					cf.complete(result);
-				}
-
-				@Override
-				public final void failed(Exception ex) {
-					cf.completeExceptionally(ex);
-				}
-
-				@Override
-				public final void cancelled() {
-					cf.cancel(false);
-				}
-			};
+			ByteArrayEntity entity = new ByteArrayEntity(layout.toByteArray(event));
+			String ctype = layout.getContentType();
+			if (ctype != null) {
+				entity.setContentType(new BasicHeader(HTTP.CONTENT_TYPE, ctype));
+			}
+			request.setEntity(entity);
+			FutureCallback<HttpResponse> callback = makeCallback("net.rcgsoft.logging.util.http.Hc4FutureCallback", cf);
 			this.httpClient4.execute(request, callback);
 		} catch (URISyntaxException e) {
 			cf.completeExceptionally(e);
