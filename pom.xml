@@ -3,7 +3,7 @@
 	<groupId>net.rcgsoft.logging</groupId>
 	<artifactId>log-utils</artifactId>
 	<packaging>jar</packaging>
-	<version>1.0.6</version>
+	<version>1.0.7-SNAPSHOT</version>
 	<name>log-utils</name>
 	<description>Appenders for Log4J2</description>
 	<url>https://github.com/jon5477/logutils</url>
@@ -12,7 +12,7 @@
 	</issueManagement>
 	<scm>
 		<connection>scm:git:git@github.com:jon5477/logutils.git</connection>
-		<tag>log-utils-1.0.6</tag>
+		<tag>HEAD</tag>
 	</scm>
 	<distributionManagement>
 		<repository>
