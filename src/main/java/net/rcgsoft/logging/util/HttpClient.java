@@ -11,14 +11,14 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.hc.client5.http.async.methods.SimpleHttpRequest;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.reactor.IOReactorStatus;
 import org.apache.hc.core5.util.Timeout;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Property;
@@ -32,8 +32,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
-import net.rcgsoft.logging.util.http.Hc4FutureCallback;
-import net.rcgsoft.logging.util.http.Hc5FutureCallback;
 
 /**
  * @author Jon Huang
@@ -176,7 +174,23 @@ public class HttpClient implements Closeable {
 			SimpleHttpRequest request = SimpleRequestBuilder.create(httpMethod).setUri(url.toURI())
 					.setAbsoluteRequestUri(true)
 					.setBody(layout.toByteArray(event), ContentType.parse(layout.getContentType())).build();
-			this.httpClient5.execute(request, new Hc5FutureCallback<>(cf));
+			org.apache.hc.core5.concurrent.FutureCallback<SimpleHttpResponse> callback = new org.apache.hc.core5.concurrent.FutureCallback<SimpleHttpResponse>() {
+				@Override
+				public final void completed(SimpleHttpResponse result) {
+					cf.complete(result);
+				}
+
+				@Override
+				public final void failed(Exception ex) {
+					cf.completeExceptionally(ex);
+				}
+
+				@Override
+				public final void cancelled() {
+					cf.cancel(false);
+				}
+			};
+			this.httpClient5.execute(request, callback);
 		} catch (URISyntaxException e) {
 			cf.completeExceptionally(e);
 		}
@@ -191,7 +205,23 @@ public class HttpClient implements Closeable {
 		CompletableFuture<HttpResponse> cf = new CompletableFuture<>();
 		try {
 			HttpPost request = new HttpPost(url.toURI());
-			this.httpClient4.execute(request, new Hc4FutureCallback<>(cf));
+			org.apache.http.concurrent.FutureCallback<SimpleHttpResponse> callback = new org.apache.http.concurrent.FutureCallback<SimpleHttpResponse>() {
+				@Override
+				public final void completed(SimpleHttpResponse result) {
+					cf.complete(result);
+				}
+
+				@Override
+				public final void failed(Exception ex) {
+					cf.completeExceptionally(ex);
+				}
+
+				@Override
+				public final void cancelled() {
+					cf.cancel(false);
+				}
+			};
+			this.httpClient4.execute(request, callback);
 		} catch (URISyntaxException e) {
 			cf.completeExceptionally(e);
 		}
