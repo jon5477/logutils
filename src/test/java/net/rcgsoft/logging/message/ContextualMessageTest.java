@@ -1,9 +1,11 @@
 package net.rcgsoft.logging.message;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -30,24 +32,54 @@ public class ContextualMessageTest {
 
 	@Test
 	public void testContextualMessageStringObjectArrayThrowable() {
-		new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), EXCEPTION);
-		new ContextualMessage(null, ARGUMENTS.clone(), EXCEPTION);
-		new ContextualMessage(MESSAGE_PATTERN, null, EXCEPTION);
-		new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), null);
+		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), EXCEPTION);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertArrayEquals(ARGUMENTS, cm.getParameters());
+		assertEquals(EXCEPTION, cm.getThrowable());
+		cm = new ContextualMessage(null, ARGUMENTS.clone(), EXCEPTION);
+		assertNull(cm.getFormat());
+		assertArrayEquals(ARGUMENTS, cm.getParameters());
+		assertEquals(EXCEPTION, cm.getThrowable());
+		cm = new ContextualMessage(MESSAGE_PATTERN, null, EXCEPTION);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertNull(cm.getParameters());
+		assertEquals(EXCEPTION, cm.getThrowable());
+		cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), null);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertArrayEquals(ARGUMENTS, cm.getParameters());
+		assertNull(cm.getThrowable());
 	}
 
 	@Test
 	public void testContextualMessageStringObjectArray() {
-		new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone());
-		new ContextualMessage(null, ARGUMENTS.clone());
-		new ContextualMessage(MESSAGE_PATTERN, (Object[]) null);
+		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone());
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertArrayEquals(ARGUMENTS, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(null, ARGUMENTS.clone());
+		assertNull(cm.getFormat());
+		assertArrayEquals(ARGUMENTS, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(MESSAGE_PATTERN, (Object[]) null);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertNull(cm.getParameters());
+		assertNull(cm.getThrowable());
 	}
 
 	@Test
 	public void testContextualMessageStringObject() {
-		new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS[0]);
-		new ContextualMessage(null, ARGUMENTS[0]);
-		new ContextualMessage(MESSAGE_PATTERN, (Object) null);
+		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS[0]);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertArrayEquals(new Object[] { ARGUMENTS[0] }, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(null, ARGUMENTS[0]);
+		assertNull(cm.getFormat());
+		assertArrayEquals(new Object[] { ARGUMENTS[0] }, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(MESSAGE_PATTERN, (Object) null);
+		assertEquals(MESSAGE_PATTERN, cm.getFormat());
+		assertArrayEquals(new Object[] { null }, cm.getParameters());
+		assertNull(cm.getThrowable());
 	}
 
 	@Test
@@ -55,10 +87,22 @@ public class ContextualMessageTest {
 		String msg = "Test Message 2 Parameters {} {}";
 		Integer arg1 = Integer.valueOf(1);
 		Integer arg2 = Integer.valueOf(2);
-		new ContextualMessage(msg, arg1, arg2);
-		new ContextualMessage(null, arg1, arg2);
-		new ContextualMessage(msg, null, arg2);
-		new ContextualMessage(msg, arg1, null);
+		ContextualMessage cm = new ContextualMessage(msg, arg1, arg2);
+		assertEquals(msg, cm.getFormat());
+		assertArrayEquals(new Object[] { arg1, arg2 }, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(null, arg1, arg2);
+		assertNull(cm.getFormat());
+		assertArrayEquals(new Object[] { arg1, arg2 }, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(msg, null, arg2);
+		assertEquals(msg, cm.getFormat());
+		assertArrayEquals(new Object[] { null, arg2 }, cm.getParameters());
+		assertNull(cm.getThrowable());
+		cm = new ContextualMessage(msg, arg1, null);
+		assertEquals(msg, cm.getFormat());
+		assertArrayEquals(new Object[] { arg1, null }, cm.getParameters());
+		assertNull(cm.getThrowable());
 	}
 
 	@Test

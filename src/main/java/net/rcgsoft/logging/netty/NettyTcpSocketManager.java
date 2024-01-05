@@ -56,6 +56,7 @@ import io.netty.util.concurrent.EventExecutor;
  *
  */
 public class NettyTcpSocketManager extends AbstractSocketManager {
+	private static final String BUFFER_NOT_NULL_MSG = "buffer cannot be null";
 	private static final int MEGABYTE = 1024 * 1024;
 	private static final int DEFAULT_LOW_WATER_MARK = 4 * MEGABYTE;
 	private static final int DEFAULT_HIGH_WATER_MARK = 8 * MEGABYTE;
@@ -307,7 +308,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param length the length of bytes to read
 	 */
 	private final void handleFailedWrite(byte[] bytes, final int offset, final int length) {
-		Objects.requireNonNull(bytes, "buffer cannot be null");
+		Objects.requireNonNull(bytes, BUFFER_NOT_NULL_MSG);
 		// the connection was lost, fire up the reconnector
 		fireReconnector();
 		// fire up the writer
@@ -326,7 +327,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param length the length of bytes to read
 	 */
 	private final void handleFailedWrite(byte[] bytes, int offset, int length, Throwable cause) {
-		Objects.requireNonNull(bytes, "buffer cannot be null");
+		Objects.requireNonNull(bytes, BUFFER_NOT_NULL_MSG);
 		handleFailedWrite(bytes, offset, length);
 		LOGGER.debug("Could not successfully write to socket: {}", cause.getLocalizedMessage(), cause);
 	}
@@ -371,7 +372,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	 * @param length the length of bytes to read
 	 */
 	private final void enqueueMessage(byte[] bytes, int offset, int length) {
-		Objects.requireNonNull(bytes, "buffer cannot be null");
+		Objects.requireNonNull(bytes, BUFFER_NOT_NULL_MSG);
 		queueMutex.lock();
 		try {
 			queueFile.add(bytes, offset, length);
@@ -540,7 +541,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
 			final SocketOptions socketOptions, final int connectTimeoutMillis, final int writerTimeoutMillis,
 			final int bufLowWaterMark, final int bufHighWaterMark) {
-		LOGGER.debug("Creating socket {}", socketAddress.toString());
+		LOGGER.debug("Creating socket {}", socketAddress);
 		Bootstrap b = new Bootstrap();
 		b.group(workerGroup).channel(NioSocketChannel.class)
 				.option(ChannelOption.ALLOCATOR, new UnpooledByteBufAllocator(false))
@@ -549,11 +550,9 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 			if (socketOptions.isKeepAlive() != null) {
 				b.option(ChannelOption.SO_KEEPALIVE, socketOptions.isKeepAlive());
 			}
-			// TODO oobInline
 			if (socketOptions.isReuseAddress() != null) {
 				b.option(ChannelOption.SO_REUSEADDR, socketOptions.isReuseAddress());
 			}
-			// TODO performancePreferences
 			if (socketOptions.getSendBufferSize() != null) {
 				b.option(ChannelOption.SO_SNDBUF, socketOptions.getSendBufferSize());
 			}
@@ -576,8 +575,8 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 		int bufLow = bufLowWaterMark > 0 ? bufLowWaterMark : DEFAULT_LOW_WATER_MARK; // 4 MB (low default)
 		int bufHigh = bufHighWaterMark > 0 ? bufHighWaterMark : DEFAULT_HIGH_WATER_MARK; // 8 MB (high default)
-		LOGGER.debug("WRITE_BUFFER_LOW_WATER_MARK size: " + bufLow);
-		LOGGER.debug("WRITE_BUFFER_HIGH_WATER_MARK size: " + bufHigh);
+		LOGGER.debug("WRITE_BUFFER_LOW_WATER_MARK size: {}", bufLow);
+		LOGGER.debug("WRITE_BUFFER_HIGH_WATER_MARK size: {}", bufHigh);
 		b.option(ChannelOption.WRITE_BUFFER_WATER_MARK, new WriteBufferWaterMark(bufLow, bufHigh));
 		// Set the Netty handler
 		b.handler(new ChannelInitializer<SocketChannel>() {

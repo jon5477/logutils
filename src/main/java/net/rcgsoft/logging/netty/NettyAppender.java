@@ -52,7 +52,7 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 	 *
 	 * @param <B> The type to build.
 	 */
-	public static abstract class AbstractBuilder<B extends AbstractBuilder<B>>
+	public abstract static class AbstractBuilder<B extends AbstractBuilder<B>>
 			extends AbstractOutputStreamAppender.Builder<B> {
 		@PluginBuilderAttribute
 		private boolean advertise;

@@ -3,6 +3,7 @@ package net.rcgsoft.logging.slack;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -52,11 +53,11 @@ public final class SlackManager extends HttpManager {
 
 	@Override
 	public final void send(Layout<?> layout, LogEvent event) throws Exception {
-		List<Property> headers = new ArrayList<>();
+		List<Property> headers;
 		if (this.headers != null) {
-			for (Property header : this.headers) {
-				headers.add(header);
-			}
+			headers = Arrays.asList(this.headers);
+		} else {
+			headers = new ArrayList<>();
 		}
 		CompletableFuture<?> request = this.client.makeRequest(method, headers, url, layout, event);
 		// Wait for HTTP response to arrive (if enabled)

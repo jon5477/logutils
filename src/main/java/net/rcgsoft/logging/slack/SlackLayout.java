@@ -24,8 +24,10 @@ import io.netty.handler.codec.http.HttpHeaderValues;
  */
 @Plugin(name = "SlackLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public class SlackLayout extends AbstractStringLayout {
-//	private static final Gson gson = new GsonBuilder().create();
-	private static final boolean useBrightColors = true;
+	private static final String TITLE = "title";
+	private static final String VALUE = "value";
+	private static final String SHORT = "short";
+	private static final boolean USE_BRIGHT_COLORS = true;
 	private int fieldSizeLimit = 0;
 
 	protected SlackLayout(int fieldSizeLimit) {
@@ -40,15 +42,15 @@ public class SlackLayout extends AbstractStringLayout {
 
 	private static final String getColorByLevel(Level level) {
 		if (level == Level.FATAL || level == Level.ERROR) {
-			return useBrightColors ? "#FF0000" : "#800000";
+			return USE_BRIGHT_COLORS ? "#FF0000" : "#800000";
 		} else if (level == Level.WARN) {
-			return useBrightColors ? "#FFFF00" : "#808000";
+			return USE_BRIGHT_COLORS ? "#FFFF00" : "#808000";
 		} else if (level == Level.INFO) {
-			return useBrightColors ? "#00FF00" : "#008000";
+			return USE_BRIGHT_COLORS ? "#00FF00" : "#008000";
 		} else if (level == Level.DEBUG) {
-			return useBrightColors ? "#00FFFF" : "#008080";
+			return USE_BRIGHT_COLORS ? "#00FFFF" : "#008080";
 		} else if (level == Level.TRACE) {
-			return useBrightColors ? "#808080" : "#000000";
+			return USE_BRIGHT_COLORS ? "#808080" : "#000000";
 		}
 		return null; // give no color by default
 	}
@@ -79,36 +81,36 @@ public class SlackLayout extends AbstractStringLayout {
 		ArrayNode fields = JsonNodeFactory.instance.arrayNode();
 		// Add Level Field
 		ObjectNode levelField = JsonNodeFactory.instance.objectNode();
-		levelField.put("title", "Level");
-		levelField.put("value", event.getLevel().toString());
-		levelField.put("short", false);
+		levelField.put(TITLE, "Level");
+		levelField.put(VALUE, event.getLevel().toString());
+		levelField.put(SHORT, false);
 		fields.add(levelField);
 		// Add Message Field
 		ObjectNode msgField = JsonNodeFactory.instance.objectNode();
-		msgField.put("title", "Message");
+		msgField.put(TITLE, "Message");
 		String fmtMsg = event.getMessage().getFormattedMessage();
 		if (this.fieldSizeLimit > 0) {
 			int endIdx = Math.min(fmtMsg.length(), this.fieldSizeLimit);
-			msgField.put("value", fmtMsg.substring(0, endIdx));
+			msgField.put(VALUE, fmtMsg.substring(0, endIdx));
 		} else {
-			msgField.put("value", fmtMsg);
+			msgField.put(VALUE, fmtMsg);
 		}
-		msgField.put("short", false);
+		msgField.put(SHORT, false);
 		fields.add(msgField);
 		// Check if Throwable is proxied
 		ThrowableProxy tp = event.getThrownProxy();
 		if (tp != null) {
 			// Add Stack Trace Field
 			ObjectNode stField = JsonNodeFactory.instance.objectNode();
-			stField.put("title", "Exception");
+			stField.put(TITLE, "Exception");
 			String stackTraceStr = tp.getCauseStackTraceAsString("");
 			if (this.fieldSizeLimit > 0) {
 				int endIdx = Math.min(stackTraceStr.length(), this.fieldSizeLimit);
-				stField.put("value", stackTraceStr.substring(0, endIdx));
+				stField.put(VALUE, stackTraceStr.substring(0, endIdx));
 			} else {
-				stField.put("value", stackTraceStr);
+				stField.put(VALUE, stackTraceStr);
 			}
-			stField.put("short", false);
+			stField.put(SHORT, false);
 			fields.add(stField);
 		}
 		// Add fields

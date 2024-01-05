@@ -1,6 +1,7 @@
 package net.rcgsoft.logging.message;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -61,5 +62,34 @@ public class ContextualMessage extends ParameterizedMessage {
 		Objects.requireNonNull(tags, "tags cannot be null");
 		this.tags.addAll(tags);
 		return this;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + Objects.hash(context, tags);
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}
+		if (!super.equals(obj)) {
+			return false;
+		}
+		if (!(obj instanceof ContextualMessage)) {
+			return false;
+		}
+		ContextualMessage other = (ContextualMessage) obj;
+		return Objects.equals(context, other.context) && Objects.equals(tags, other.tags);
+	}
+
+	@Override
+	public String toString() {
+		return "ContextualMessage [context=" + context + ", tags=" + tags + ", getFormat()=" + getFormat()
+				+ ", getParameters()=" + Arrays.toString(getParameters()) + ", getThrowable()=" + getThrowable() + "]";
 	}
 }
