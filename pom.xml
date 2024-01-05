@@ -1,4 +1,6 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>net.rcgsoft.logging</groupId>
 	<artifactId>log-utils</artifactId>
@@ -258,6 +260,13 @@
 						<phase>process-classes</phase>
 						<configuration>
 							<proc>only</proc>
+							<annotationProcessorPaths>
+								<annotationProcessorPath>
+									<groupId>org.apache.logging.log4j</groupId>
+									<artifactId>log4j-core</artifactId>
+									<version>${log4j.version}</version>
+								</annotationProcessorPath>
+							</annotationProcessorPaths>
 							<annotationProcessors>
 								<annotationProcessor>
 									org.apache.logging.log4j.core.config.plugins.processor.PluginProcessor</annotationProcessor>
