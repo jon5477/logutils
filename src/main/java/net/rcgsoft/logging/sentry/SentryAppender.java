@@ -70,14 +70,15 @@ public class SentryAppender extends AbstractAppender {
 	 * Creates an instance of SentryAppender.
 	 *
 	 * @param name   The Appender name.
+	 * @param dsn    The Sentry DSN.
 	 * @param filter The Filter to associate with the Appender.
 	 * @param hub    The Sentry Hub instance.
 	 */
 	protected SentryAppender(String name, String dsn, Filter filter, IHub hub) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
-		this.addFilter(new DropSentryFilter());
 		this.dsn = Objects.requireNonNull(dsn, "dsn cannot be null");
 		this.hub = Objects.requireNonNull(hub, "hub cannot be null");
+		this.addFilter(DropSentryFilter.INSTANCE);
 	}
 
 	/**
@@ -135,7 +136,7 @@ public class SentryAppender extends AbstractAppender {
 	}
 
 	@Override
-	public void start() {
+	public final void start() {
 		if (!Sentry.isEnabled()) {
 			Sentry.init(opt -> {
 				opt.setEnableExternalConfiguration(true);
@@ -146,7 +147,7 @@ public class SentryAppender extends AbstractAppender {
 	}
 
 	@Override
-	public void append(LogEvent logEvent) {
+	public final void append(LogEvent logEvent) {
 		if (logEvent.getLevel().isMoreSpecificThan(Level.ERROR)) {
 			hub.captureEvent(createSentryEvent(logEvent));
 		}
@@ -161,7 +162,7 @@ public class SentryAppender extends AbstractAppender {
 	 * @param logEvent The logging event from Log4J2.
 	 * @return SentryEvent containing details provided by the logging system.
 	 */
-	protected SentryEvent createSentryEvent(LogEvent logEvent) {
+	protected final SentryEvent createSentryEvent(LogEvent logEvent) {
 		SentryEvent evt = new SentryEvent(new Date(logEvent.getTimeMillis()));
 		Message logMsg = logEvent.getMessage();
 		io.sentry.protocol.Message msg = new io.sentry.protocol.Message();
@@ -216,24 +217,30 @@ public class SentryAppender extends AbstractAppender {
 		return breadcrumb;
 	}
 
-	private class DropSentryFilter extends AbstractFilter {
+	private static final class DropSentryFilter extends AbstractFilter {
+		private static final DropSentryFilter INSTANCE = new DropSentryFilter();
+
+		private DropSentryFilter() {
+			// singleton
+		}
+
 		@Override
-		public Result filter(Logger logger, Level level, Marker marker, String msg, Object... params) {
+		public final Result filter(Logger logger, Level level, Marker marker, String msg, Object... params) {
 			return filter(logger.getName());
 		}
 
 		@Override
-		public Result filter(Logger logger, Level level, Marker marker, Object msg, Throwable t) {
+		public final Result filter(Logger logger, Level level, Marker marker, Object msg, Throwable t) {
 			return filter(logger.getName());
 		}
 
 		@Override
-		public Result filter(Logger logger, Level level, Marker marker, Message msg, Throwable t) {
+		public final Result filter(Logger logger, Level level, Marker marker, Message msg, Throwable t) {
 			return filter(logger.getName());
 		}
 
 		@Override
-		public Result filter(LogEvent event) {
+		public final Result filter(LogEvent event) {
 			return filter(event.getLoggerName());
 		}
 

@@ -19,6 +19,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.netty.handler.codec.http.HttpHeaderValues;
 
+/**
+ * Abstract class for all JSON Layouts.
+ * 
+ * @author David Xu
+ *
+ */
 public abstract class AbstractJsonLayout extends AbstractStringLayout {
 	protected static final Map<Level, Integer> BUNYAN_LEVEL = new HashMap<>();
 

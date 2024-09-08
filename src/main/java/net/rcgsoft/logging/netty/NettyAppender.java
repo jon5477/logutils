@@ -33,6 +33,9 @@ import io.netty.channel.Channel;
 /**
  * An Appender that delivers events over netty socket connections. Supports both
  * TCP and UDP.
+ * 
+ * @author Jon Huang
+ *
  */
 @Plugin(name = "Netty", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE, printObject = true)
 public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketManager> {
@@ -323,17 +326,17 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 			LOGGER.info("Appender {} ignoring SSL configuration for {} protocol", name, protocol);
 		}
 		switch (protocol) {
-		case TCP:
-			return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis, writerTimeoutMillis,
-					reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark, socketOptions,
-					bufFileName);
-		case UDP:
-			return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
-		case SSL:
-			return SslSocketManager.getSocketManager(sslConfig, host, port, connectTimeoutMillis, reconnectDelayMillis,
-					immediateFail, layout, bufferSize, socketOptions);
-		default:
-			throw new IllegalArgumentException(protocol.toString());
+			case TCP:
+				return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis,
+						writerTimeoutMillis, reconnectDelayMillis, layout, bufferSize, bufLowWaterMark,
+						bufHighWaterMark, socketOptions, bufFileName);
+			case UDP:
+				return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
+			case SSL:
+				return SslSocketManager.getSocketManager(sslConfig, host, port, connectTimeoutMillis,
+						reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions);
+			default:
+				throw new IllegalArgumentException(protocol.toString());
 		}
 	}
 

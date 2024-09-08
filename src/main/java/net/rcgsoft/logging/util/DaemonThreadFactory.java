@@ -4,7 +4,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * {@code ThreadFactory} for creating daemon-{@code Thread}s.
+ * {@link ThreadFactory} implementation for creating daemon-{@link Thread}s.
  * 
  * @author Jon Huang
  *

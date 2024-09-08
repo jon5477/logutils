@@ -730,6 +730,16 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 	}
 
 	@Override
+	public final void close() {
+		try {
+			workerGroup.shutdownGracefully();
+			executor.shutdownGracefully();
+		} finally {
+			super.close();
+		}
+	}
+
+	@Override
 	public final String toString() {
 		return "NettyTcpSocketManager [reconnectionDelayMillis=" + reconnectionDelayMillis + ", reconnector="
 				+ reconnector + ", channel=" + channelRef.get() + ", socketOptions=" + socketOptions + ", retry="

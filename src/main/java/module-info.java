@@ -39,7 +39,7 @@ module net.rcgsoft.logutils {
 	requires static org.apache.httpcomponents.httpcore.nio;
 	requires org.apache.logging.log4j;
 	requires transitive org.apache.logging.log4j.core;
-	requires org.reactivestreams;
+	requires org.jspecify;
 	requires org.slf4j;
 
 	// Unstable modules

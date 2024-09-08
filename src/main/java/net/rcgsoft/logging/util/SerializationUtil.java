@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 /**
- * JSON Serialization utility. Provides the {@code ObjectMapper} instance.
+ * JSON Serialization utility. Provides the {@link ObjectMapper} instance.
  * 
  * @author Jon Huang
  *

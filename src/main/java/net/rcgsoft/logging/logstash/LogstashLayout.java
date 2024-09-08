@@ -26,6 +26,9 @@ import net.rcgsoft.logging.util.SerializationUtil;
 /**
  * A Log4j2 Layout which prints events in Logstash JSON format. The layout takes
  * no options and requires no additional configuration.
+ * 
+ * @author David Xu
+ *
  */
 @Plugin(name = "LogstashLayout", category = "Core", elementType = "layout", printObject = true)
 public class LogstashLayout extends AbstractJsonLayout {
