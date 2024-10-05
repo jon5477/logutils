@@ -1,6 +1,6 @@
 # Log4J2 Utilities
 This library provides a multitude of Log4J 2.x Appenders:
-- [Netty TCP](https://netty.io/)
+- TCP using the [Netty](https://netty.io/) Library
 - [Slack](https://slack.com/)
 - [Discord](https://discord.com/) using the Slack Appender
 - [Sentry](https://sentry.io/)
@@ -8,14 +8,14 @@ This library provides a multitude of Log4J 2.x Appenders:
 This library also provides the following logging layouts:
 - [Bunyan](https://github.com/trentm/node-bunyan) - at a very basic level
 - [Logstash](https://www.elastic.co/logstash)
-  - Send logging events to Logstash using TCP - combine the Netty TCP appender with the Logstash layout
+  - Logging events can be sent to Logstash with the TCP protocol - combine the Netty TCP appender with the Logstash layout
 - SlackLayout - for sending events to Slack/Discord
 
 ## Adding additional context information to a LogEvent
-- Utilize the `ContextualMessage` class to add additional KVs to a logging event before sending it to a specific destination
+- Utilize the `ContextualMessage` class to add additional key-value mappings to a logging event before sending it to a specific destination
 
 ## Built-in Logging Message Queueing
-- The Netty TCP Appender will automatically queue messages to the local filesystem if it is unable to send messages to TCP. Once network connectivity is restored, these messages are delivered.
+- The Netty TCP Appender will automatically queue messages to the local filesystem if it is unable to deliver messages via TCP. Once network connectivity is restored, these messages are delivered.
 
 ## Automatic HTTP Client Selection
 - The Slack/Discord Appenders will automatically select a suitable HTTP client based on the dependencies located at runtime:

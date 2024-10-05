@@ -1,19 +1,21 @@
-package net.rcgsoft.logging.util.http;
+package net.rcgsoft.logging.util.http.impl;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-import org.apache.hc.core5.concurrent.FutureCallback;
+import org.apache.http.concurrent.FutureCallback;
 
 /**
+ * The {@link FutureCallback} implementation that forwards the result to a
+ * {@link CompletableFuture}.
  * 
  * @author Jon Huang
  *
  */
-public final class Hc5FutureCallback<T> implements FutureCallback<T> {
+final class Hc4FutureCallback<T> implements FutureCallback<T> {
 	private final CompletableFuture<T> cf;
 
-	public Hc5FutureCallback(CompletableFuture<T> cf) {
+	Hc4FutureCallback(CompletableFuture<T> cf) {
 		this.cf = Objects.requireNonNull(cf, "completable future cannot be null");
 	}
 

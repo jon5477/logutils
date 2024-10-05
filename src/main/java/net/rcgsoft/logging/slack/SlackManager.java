@@ -15,7 +15,8 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.net.ssl.SslConfiguration;
 
-import net.rcgsoft.logging.util.HttpClient;
+import net.rcgsoft.logging.util.http.LogEventHttpClient;
+import net.rcgsoft.logging.util.http.impl.LogEventHttpClientLoader;
 
 /**
  * 
@@ -23,7 +24,7 @@ import net.rcgsoft.logging.util.HttpClient;
  *
  */
 public final class SlackManager extends HttpManager {
-	private final HttpClient client;
+	private final LogEventHttpClient client;
 	private final URL url;
 	private final String method;
 	private final Property[] headers;
@@ -36,7 +37,8 @@ public final class SlackManager extends HttpManager {
 		this.url = url;
 		this.method = method;
 		this.headers = headers;
-		this.client = new HttpClient(connectTimeoutMillis, readTimeoutMillis, verifyHostname);
+		this.client = LogEventHttpClientLoader.load();
+		this.client.initialize(connectTimeoutMillis, readTimeoutMillis, verifyHostname);
 		this.blockingHttp = blockingHttp;
 	}
 
@@ -59,7 +61,7 @@ public final class SlackManager extends HttpManager {
 		} else {
 			headers = new ArrayList<>();
 		}
-		CompletableFuture<?> request = this.client.makeRequest(method, headers, url, layout, event);
+		CompletableFuture<?> request = this.client.sendRequest(method, headers, url, layout, event);
 		// Wait for HTTP response to arrive (if enabled)
 		if (this.blockingHttp) {
 			request.get();
