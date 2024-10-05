@@ -25,5 +25,5 @@ This library also provides the following logging layouts:
   - [Apache HTTP Client 4.x](https://hc.apache.org/httpcomponents-client-4.5.x/index.html)
 
 # Build Requirements
-- Maven 3.2.5 (at a minimum), the latest version is recommended
+- Maven 3.6.3 (at a minimum), the latest version is recommended
 - Java 11 (we do not provide support for Java 8 as it is nearing end-of-life)
