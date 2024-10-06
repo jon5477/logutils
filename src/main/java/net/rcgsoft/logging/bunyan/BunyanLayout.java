@@ -60,15 +60,15 @@ public class BunyanLayout extends AbstractJsonLayout {
 	protected final ObjectNode formatJson(LogEvent event) {
 		ObjectNode jsonEvent = JsonNodeFactory.instance.objectNode();
 		Message msg = event.getMessage();
-		if (msg instanceof ContextualMessage) {
+		if (msg instanceof ContextualMessage cmsg) {
 			ObjectMapper objMapper = SerializationUtil.getObjectMapper();
-			Map<String, Object> context = ((ContextualMessage) msg).getContext();
+			Map<String, Object> context = cmsg.getContext();
 			if (!context.isEmpty()) {
 				for (Map.Entry<String, Object> entry : context.entrySet()) {
 					jsonEvent.set(entry.getKey(), objMapper.valueToTree(entry.getValue()));
 				}
 			}
-			jsonEvent.set("tags", listToJsonStringArray(((ContextualMessage) msg).getTags()));
+			jsonEvent.set("tags", listToJsonStringArray(cmsg.getTags()));
 		}
 		jsonEvent.put("v", 0);
 		jsonEvent.put("level", BUNYAN_LEVEL.get(event.getLevel()));

@@ -90,11 +90,10 @@ public class ContextualMessage extends ParameterizedMessage {
 		if (!super.equals(obj)) {
 			return false;
 		}
-		if (!(obj instanceof ContextualMessage)) {
-			return false;
+		if (obj instanceof ContextualMessage other) {
+			return Objects.equals(context, other.context) && Objects.equals(tags, other.tags);
 		}
-		ContextualMessage other = (ContextualMessage) obj;
-		return Objects.equals(context, other.context) && Objects.equals(tags, other.tags);
+		return false;
 	}
 
 	@Override

@@ -731,7 +731,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 
 		@Override
 		public final void userEventTriggered(ChannelHandlerContext ctx, Object event) throws Exception {
-			if (event instanceof IdleStateEvent && ((IdleStateEvent) event).state() == IdleState.WRITER_IDLE) {
+			if (event instanceof IdleStateEvent evt && evt.state() == IdleState.WRITER_IDLE) {
 				// Just close the connection if the idle event is triggered
 				LOGGER.debug("Closing socket due to writer inactivity.");
 				ctx.close();

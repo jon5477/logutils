@@ -59,15 +59,15 @@ public class LogstashLayout extends AbstractJsonLayout {
 	protected final ObjectNode formatJson(LogEvent event) {
 		ObjectNode jsonEvent = JsonNodeFactory.instance.objectNode();
 		Message msg = event.getMessage();
-		if (msg instanceof ContextualMessage) {
+		if (msg instanceof ContextualMessage ctxMsg) {
 			ObjectMapper objMapper = SerializationUtil.getObjectMapper();
-			Map<String, Object> context = ((ContextualMessage) msg).getContext();
+			Map<String, Object> context = ctxMsg.getContext();
 			if (!context.isEmpty()) {
 				for (Map.Entry<String, Object> entry : context.entrySet()) {
 					jsonEvent.set(entry.getKey(), objMapper.valueToTree(entry.getValue()));
 				}
 			}
-			ArrayNode tags = listToJsonStringArray(((ContextualMessage) msg).getTags());
+			ArrayNode tags = listToJsonStringArray(ctxMsg.getTags());
 			tags.add("bunyan");
 			jsonEvent.set("tags", tags);
 		}

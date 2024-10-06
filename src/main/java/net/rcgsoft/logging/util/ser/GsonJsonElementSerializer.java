@@ -49,20 +49,20 @@ public final class GsonJsonElementSerializer extends JsonSerializer<JsonElement>
 				gen.writeBoolean(jp.getAsBoolean());
 			} else if (jp.isNumber()) {
 				Number num = jp.getAsNumber();
-				if (num instanceof Short) {
-					gen.writeNumber(num.shortValue());
-				} else if (num instanceof Integer) {
-					gen.writeNumber(num.intValue());
-				} else if (num instanceof Long) {
-					gen.writeNumber(num.longValue());
-				} else if (num instanceof Float) {
-					gen.writeNumber(num.floatValue());
-				} else if (num instanceof Double) {
-					gen.writeNumber(num.doubleValue());
-				} else if (num instanceof BigDecimal) {
-					gen.writeNumber((BigDecimal) num);
-				} else if (num instanceof BigInteger) {
-					gen.writeNumber((BigInteger) num);
+				if (num instanceof Short s) {
+					gen.writeNumber(s.shortValue());
+				} else if (num instanceof Integer i) {
+					gen.writeNumber(i.intValue());
+				} else if (num instanceof Long l) {
+					gen.writeNumber(l.longValue());
+				} else if (num instanceof Float f) {
+					gen.writeNumber(f.floatValue());
+				} else if (num instanceof Double d) {
+					gen.writeNumber(d.doubleValue());
+				} else if (num instanceof BigDecimal bd) {
+					gen.writeNumber(bd);
+				} else if (num instanceof BigInteger bi) {
+					gen.writeNumber(bi);
 				} else {
 					gen.writeNumber(num.toString());
 				}

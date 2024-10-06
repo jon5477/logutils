@@ -206,8 +206,8 @@ public class SentryAppender extends AbstractAppender {
 			contextStack.put(i, stackList.get(i));
 		}
 		evtCtx.put(LOG4J_CTX_STACK, contextStack);
-		if (logMsg instanceof ContextualMessage) {
-			Map<String, Object> context = new ConcurrentHashMap<>(((ContextualMessage) logMsg).getContext());
+		if (logMsg instanceof ContextualMessage ctxMsg) {
+			Map<String, Object> context = new ConcurrentHashMap<>(ctxMsg.getContext());
 			if (!context.isEmpty()) {
 				evtCtx.put(CTX_MSG, context);
 			}
