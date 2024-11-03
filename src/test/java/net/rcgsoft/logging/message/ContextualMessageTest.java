@@ -1,13 +1,13 @@
 package net.rcgsoft.logging.message;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class ContextualMessageTest {
 	private static final String MESSAGE_PATTERN = "Test Message with Parameter {}";
@@ -25,7 +25,7 @@ public class ContextualMessageTest {
 	private static final Exception EXCEPTION = new Exception("Test");
 	private ContextualMessage ctxMsg;
 
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
 		ctxMsg = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), EXCEPTION);
 	}
