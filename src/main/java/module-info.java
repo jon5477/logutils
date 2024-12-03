@@ -23,6 +23,8 @@ module net.rcgsoft.logutils {
 	opens net.rcgsoft.logging.util.http;
 	opens net.rcgsoft.logging.util.ser;
 
+	requires static java.net.http;
+
 	requires transitive com.fasterxml.jackson.databind;
 	requires com.fasterxml.jackson.datatype.jsr310;
 	requires static com.google.gson;

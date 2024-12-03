@@ -38,7 +38,7 @@ public final class LogEventHttpClientLoader {
 	 * @return The {@link LogEventHttpClient} implementation.
 	 */
 	public static LogEventHttpClient load() {
-		Class<?>[] classes = new Class<?>[] { Hc5LogEventHttpClient.class, Hc4LogEventHttpClient.class };
+		Class<?>[] classes = new Class<?>[] { Hc5LogEventHttpClient.class, Hc4LogEventHttpClient.class, AhcLogEventHttpClient.class };
 		for (Class<?> clazz : classes) {
 			try {
 				return (LogEventHttpClient) clazz.getConstructor().newInstance();
@@ -47,7 +47,7 @@ public final class LogEventHttpClientLoader {
 				LOGGER.info("Failed to load {}", clazz.getSimpleName());
 			}
 		}
-		// always fallback to AHC
-		return new AhcLogEventHttpClient();
+		// always fallback to Java HC
+		return new JavaLogEventHttpClient();
 	}
 }
