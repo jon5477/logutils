@@ -20,10 +20,18 @@ This library also provides the following logging layouts:
 ## Automatic HTTP Client Selection
 - The Slack/Discord Appenders will automatically select a suitable HTTP client based on the dependencies resolved during runtime:
 - The priority for HTTP client selection is as follows:
-  - [async-http-client](https://github.com/AsyncHttpClient/async-http-client)
   - [Apache HTTP Client 5.x](https://hc.apache.org/httpcomponents-client-5.3.x/index.html)
   - [Apache HTTP Client 4.x](https://hc.apache.org/httpcomponents-client-4.5.x/index.html)
+  - [async-http-client](https://github.com/AsyncHttpClient/async-http-client)
+  - [Java HttpClient](https://docs.oracle.com/en/java/javase/11/docs/api/java.net.http/java/net/http/HttpClient.html) - Fallback, if no other HTTP clients are available
+
+# Requirements
+- Java 17 (Java 11 is EOL)
+- Log4J 2.x
+- Netty 4.x
+- Jackson Databind
+- Jakarta Activation
 
 # Build Requirements
 - Maven 3.6.3 (at a minimum), the latest version is recommended
-- Java 11 (we do not provide support for Java 8 as it is nearing end-of-life)
+- Java 17 (we do not provide support for Java 8 and 11 as they are both end-of-life)
