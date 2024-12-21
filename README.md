@@ -21,7 +21,6 @@ This library also provides the following logging layouts:
 - The Slack/Discord Appenders will automatically select a suitable HTTP client based on the dependencies resolved during runtime:
 - The priority for HTTP client selection is as follows:
   - [Apache HTTP Client 5.x](https://hc.apache.org/httpcomponents-client-5.3.x/index.html)
-  - [Apache HTTP Client 4.x](https://hc.apache.org/httpcomponents-client-4.5.x/index.html)
   - [async-http-client](https://github.com/AsyncHttpClient/async-http-client)
   - [Java HttpClient](https://docs.oracle.com/en/java/javase/11/docs/api/java.net.http/java/net/http/HttpClient.html) - Fallback, if no other HTTP clients are available
 
