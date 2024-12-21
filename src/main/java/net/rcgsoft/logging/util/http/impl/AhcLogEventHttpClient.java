@@ -39,7 +39,7 @@ import net.rcgsoft.logging.util.http.LogEventHttpClient;
  * @author Jon Huang
  *
  */
-class AhcLogEventHttpClient implements LogEventHttpClient {
+final class AhcLogEventHttpClient implements LogEventHttpClient {
 	private final Lock mutex = new ReentrantLock();
 	private AsyncHttpClient client;
 

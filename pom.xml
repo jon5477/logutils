@@ -39,10 +39,8 @@
 		<jackson.version>2.18.2</jackson.version>
 		<!-- Optional Dependency Versions -->
 		<async-http-client.version>3.0.1</async-http-client.version>
-		<apache.hc4.version>4.5.14</apache.hc4.version>
-		<apache.ahc4.version>4.1.5</apache.ahc4.version>
 		<apache.hc5.version>5.4.1</apache.hc5.version>
-		<gson.version>2.11.0</gson.version>
+		<gson.version>2.10.1</gson.version>
 		<sentry.version>7.18.1</sentry.version>
 		<!-- Plugin versions -->
 		<enforcer.plugin.version>3.5.0</enforcer.plugin.version>
@@ -108,18 +106,6 @@
 			<groupId>com.sun.activation</groupId>
 			<artifactId>jakarta.activation</artifactId>
 			<version>2.0.1</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.httpcomponents</groupId>
-			<artifactId>httpclient</artifactId>
-			<version>${apache.hc4.version}</version>
-			<optional>true</optional>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.httpcomponents</groupId>
-			<artifactId>httpasyncclient</artifactId>
-			<version>${apache.ahc4.version}</version>
-			<optional>true</optional>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.httpcomponents.client5</groupId>

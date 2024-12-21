@@ -548,7 +548,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private static final ChannelFuture createSocket(final InetSocketAddress socketAddress,
+	private static ChannelFuture createSocket(final InetSocketAddress socketAddress,
 			final SocketOptions socketOptions, final int connectTimeoutMillis, final int writerTimeoutMillis,
 			final int bufLowWaterMark, final int bufHighWaterMark) {
 		LOGGER.debug("Creating socket {}", socketAddress);
@@ -709,7 +709,7 @@ public class NettyTcpSocketManager extends AbstractSocketManager {
 		}
 	}
 
-	private static final List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
+	private static List<InetSocketAddress> resolveHost(String host, int port) throws UnknownHostException {
 		InetAddress[] addresses = InetAddress.getAllByName(host);
 		List<InetSocketAddress> socketAddresses = new ArrayList<>(addresses.length);
 		for (InetAddress address : addresses) {

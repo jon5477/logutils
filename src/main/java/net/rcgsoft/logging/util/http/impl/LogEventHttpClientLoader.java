@@ -31,7 +31,6 @@ public final class LogEventHttpClientLoader {
 	 * order):
 	 * <ul>
 	 * <li>Apache HTTP Client 5.x</li>
-	 * <li>Apache HTTP Client 4.x</li>
 	 * <li>Async HTTP Client 3.x</li>
 	 * <li>Java's built-in HttpClient (Fallback)</li>
 	 * </ul>
@@ -39,8 +38,7 @@ public final class LogEventHttpClientLoader {
 	 * @return The {@link LogEventHttpClient} implementation.
 	 */
 	public static LogEventHttpClient load() {
-		Class<?>[] classes = new Class<?>[] { Hc5LogEventHttpClient.class, Hc4LogEventHttpClient.class,
-				AhcLogEventHttpClient.class };
+		Class<?>[] classes = new Class<?>[] { Hc5LogEventHttpClient.class, AhcLogEventHttpClient.class };
 		for (Class<?> clazz : classes) {
 			try {
 				return (LogEventHttpClient) clazz.getConstructor().newInstance();

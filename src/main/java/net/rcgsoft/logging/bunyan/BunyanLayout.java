@@ -23,6 +23,7 @@ import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
+import org.jspecify.annotations.NonNull;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -57,7 +58,7 @@ public class BunyanLayout extends AbstractJsonLayout {
 	 * Format the event as a Bunyan style JSON object.
 	 */
 	@Override
-	protected final ObjectNode formatJson(LogEvent event) {
+	protected final ObjectNode formatJson(@NonNull LogEvent event) {
 		ObjectNode jsonEvent = JsonNodeFactory.instance.objectNode();
 		Message msg = event.getMessage();
 		if (msg instanceof ContextualMessage cmsg) {

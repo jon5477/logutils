@@ -44,7 +44,7 @@ public final class SerializationUtil {
 		// static utility class
 	}
 
-	public static final ObjectMapper getObjectMapper() {
+	public static ObjectMapper getObjectMapper() {
 		return OBJECT_MAPPER;
 	}
 }

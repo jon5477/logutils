@@ -18,10 +18,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collector;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.layout.AbstractStringLayout;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -37,6 +40,9 @@ import io.netty.handler.codec.http.HttpHeaderValues;
  */
 public abstract class AbstractJsonLayout extends AbstractStringLayout {
 	protected static final Map<Level, Integer> BUNYAN_LEVEL = new HashMap<>();
+	private static final Collector<String, ArrayNode, ArrayNode> ARRAY_NODE_COLLECTOR = Collector.of(
+			JsonNodeFactory.instance::arrayNode, ArrayNode::add, ArrayNode::addAll,
+			Collector.Characteristics.IDENTITY_FINISH);
 
 	static {
 		BUNYAN_LEVEL.put(Level.FATAL, 60);
@@ -47,27 +53,22 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 		BUNYAN_LEVEL.put(Level.TRACE, 10);
 	}
 
-	public static final ArrayNode listToJsonStringArray(List<String> strs) {
-		int listSize = strs.size();
-		ArrayNode arr = JsonNodeFactory.instance.arrayNode(listSize);
-		for (String str : strs) {
-			arr.add(str);
-		}
-		return arr;
+	protected static ArrayNode listToJsonStringArray(@NonNull List<String> strs) {
+		return strs.stream().collect(ARRAY_NODE_COLLECTOR);
 	}
 
-	public static final String formatAsIsoUTCDateTime(long timeStamp) {
-		final Instant instant = Instant.ofEpochMilli(timeStamp);
+	protected static String formatAsIsoUTCDateTime(long timestamp) {
+		Instant instant = Instant.ofEpochMilli(timestamp);
 		return ZonedDateTime.ofInstant(instant, ZoneOffset.UTC).format(DateTimeFormatter.ISO_INSTANT);
 	}
 
-	protected AbstractJsonLayout(Charset charset) {
+	protected AbstractJsonLayout(@Nullable Charset charset) {
 		super(charset);
 	}
 
-	protected abstract ObjectNode formatJson(LogEvent event);
+	protected abstract ObjectNode formatJson(@NonNull LogEvent event);
 
-	protected final String format(LogEvent event) {
+	protected final String format(@NonNull LogEvent event) {
 		StringBuilder sb = new StringBuilder();
 		sb.append(this.formatJson(event));
 		sb.append('\n');
@@ -80,12 +81,12 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 	}
 
 	@Override
-	public final byte[] toByteArray(LogEvent event) {
+	public final byte[] toByteArray(@NonNull LogEvent event) {
 		return format(event).getBytes();
 	}
 
 	@Override
-	public final String toSerializable(LogEvent event) {
+	public final String toSerializable(@NonNull LogEvent event) {
 		return format(event);
 	}
 }

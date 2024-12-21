@@ -9,6 +9,7 @@ module net.rcgsoft.logutils {
 	exports net.rcgsoft.logging.slack;
 	exports net.rcgsoft.logging.util;
 	exports net.rcgsoft.logging.util.http;
+	exports net.rcgsoft.logging.util.http.impl;
 	exports net.rcgsoft.logging.util.ser;
 
 	opens com.squareup.tape2;
@@ -21,6 +22,7 @@ module net.rcgsoft.logutils {
 	opens net.rcgsoft.logging.slack;
 	opens net.rcgsoft.logging.util;
 	opens net.rcgsoft.logging.util.http;
+	opens net.rcgsoft.logging.util.http.impl;
 	opens net.rcgsoft.logging.util.ser;
 
 	requires static java.net.http;
@@ -35,10 +37,6 @@ module net.rcgsoft.logutils {
 	requires io.netty.transport;
 	requires static org.apache.httpcomponents.client5.httpclient5;
 	requires static org.apache.httpcomponents.core5.httpcore5;
-	requires static org.apache.httpcomponents.httpasyncclient;
-	requires static org.apache.httpcomponents.httpclient;
-	requires static org.apache.httpcomponents.httpcore;
-	requires static org.apache.httpcomponents.httpcore.nio;
 	requires org.apache.logging.log4j;
 	requires transitive org.apache.logging.log4j.core;
 	requires org.jspecify;
