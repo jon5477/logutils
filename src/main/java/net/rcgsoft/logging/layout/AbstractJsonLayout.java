@@ -1,5 +1,5 @@
 /*********************************************************************
-* Copyright (c) 2024 Jon Huang and David Xu
+* Copyright (c) 2025 Jon Huang and David Xu
 *
 * This program and the accompanying materials are made
 * available under the terms of the Eclipse Public License 2.0
@@ -36,6 +36,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
  * Abstract class for all JSON Layouts.
  * 
  * @author David Xu
+ * @author Jon Huang
  *
  */
 public abstract class AbstractJsonLayout extends AbstractStringLayout {
@@ -82,7 +83,7 @@ public abstract class AbstractJsonLayout extends AbstractStringLayout {
 
 	@Override
 	public final byte[] toByteArray(@NonNull LogEvent event) {
-		return format(event).getBytes();
+		return getBytes(format(event));
 	}
 
 	@Override

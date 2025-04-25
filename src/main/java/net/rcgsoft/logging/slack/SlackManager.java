@@ -1,5 +1,5 @@
 /*********************************************************************
-* Copyright (c) 2024 Jon Huang
+* Copyright (c) 2025 Jon Huang
 *
 * This program and the accompanying materials are made
 * available under the terms of the Eclipse Public License 2.0
@@ -40,7 +40,7 @@ public final class SlackManager extends HttpManager {
 	private final Property[] headers;
 	private final boolean blockingHttp;
 
-	protected SlackManager(Configuration configuration, LoggerContext loggerContext, String name, URL url,
+	SlackManager(Configuration configuration, LoggerContext loggerContext, String name, URL url,
 			String method, int connectTimeoutMillis, int readTimeoutMillis, Property[] headers,
 			SslConfiguration sslConf, boolean verifyHostname, boolean blockingHttp) {
 		super(configuration, loggerContext, name);

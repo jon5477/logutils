@@ -1,5 +1,5 @@
 /*********************************************************************
-* Copyright (c) 2024 Jon Huang
+* Copyright (c) 2025 Jon Huang
 *
 * This program and the accompanying materials are made
 * available under the terms of the Eclipse Public License 2.0
@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.handler.codec.http.HttpHeaderValues;
 
 /**
+ * Provides the log message layout for Slack.
  * 
  * @author Jon Huang
  *
@@ -51,15 +52,15 @@ public class SlackLayout extends AbstractStringLayout {
 	}
 
 	private static final String getColorByLevel(Level level) {
-		if (level == Level.FATAL || level == Level.ERROR) {
+		if (level.equals(Level.FATAL) || level.equals(Level.ERROR)) {
 			return USE_BRIGHT_COLORS ? "#FF0000" : "#800000";
-		} else if (level == Level.WARN) {
+		} else if (level.equals(Level.WARN)) {
 			return USE_BRIGHT_COLORS ? "#FFFF00" : "#808000";
-		} else if (level == Level.INFO) {
+		} else if (level.equals(Level.INFO)) {
 			return USE_BRIGHT_COLORS ? "#00FF00" : "#008000";
-		} else if (level == Level.DEBUG) {
+		} else if (level.equals(Level.DEBUG)) {
 			return USE_BRIGHT_COLORS ? "#00FFFF" : "#008080";
-		} else if (level == Level.TRACE) {
+		} else if (level.equals(Level.TRACE)) {
 			return USE_BRIGHT_COLORS ? "#808080" : "#000000";
 		}
 		return null; // give no color by default

@@ -1,5 +1,5 @@
 /*********************************************************************
-* Copyright (c) 2024 Jon Huang
+* Copyright (c) 2025 Jon Huang
 *
 * This program and the accompanying materials are made
 * available under the terms of the Eclipse Public License 2.0
@@ -335,19 +335,15 @@ public class NettyAppender extends AbstractOutputStreamAppender<AbstractSocketMa
 		if (protocol != Protocol.SSL && sslConfig != null) {
 			LOGGER.info("Appender {} ignoring SSL configuration for {} protocol", name, protocol);
 		}
-		switch (protocol) {
-			case TCP:
-				return NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis,
-						writerTimeoutMillis, reconnectDelayMillis, layout, bufferSize, bufLowWaterMark,
-						bufHighWaterMark, socketOptions, bufFileName);
-			case UDP:
-				return DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
-			case SSL:
-				return SslSocketManager.getSocketManager(sslConfig, host, port, connectTimeoutMillis,
-						reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions);
-			default:
-				throw new IllegalArgumentException(protocol.toString());
-		}
+		return switch (protocol) {
+			case TCP -> NettyTcpSocketManager.getSocketManager(name, host, port, connectTimeoutMillis,
+					writerTimeoutMillis, reconnectDelayMillis, layout, bufferSize, bufLowWaterMark, bufHighWaterMark,
+					socketOptions, bufFileName);
+			case UDP -> DatagramSocketManager.getSocketManager(host, port, layout, bufferSize);
+			case SSL -> SslSocketManager.getSocketManager(sslConfig, host, port, connectTimeoutMillis,
+					reconnectDelayMillis, immediateFail, layout, bufferSize, socketOptions);
+			default -> throw new IllegalArgumentException(protocol.toString());
+		};
 	}
 
 	@Override

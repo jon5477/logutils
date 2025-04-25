@@ -10,41 +10,32 @@ import java.util.Map;
 
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import io.sentry.IHub;
+import io.sentry.IScopes;
 import io.sentry.SentryEvent;
 import io.sentry.protocol.Message;
 import net.rcgsoft.logging.message.ContextualMessage;
 
-public class SentryAppenderTest {
+class SentryAppenderTest {
 	private SentryAppender app;
 
-	@BeforeAll
-	public static void setUpBeforeClass() throws Exception {
-	}
-
-	@AfterAll
-	public static void tearDownAfterClass() throws Exception {
-	}
-
 	@BeforeEach
-	public void setUp() throws Exception {
-		IHub hub = Mockito.mock(IHub.class);
-		this.app = new SentryAppender(hub);
+	void setUp() {
+		IScopes scopes = Mockito.mock(IScopes.class);
+		this.app = new SentryAppender(scopes);
 	}
 
 	@AfterEach
-	public void tearDown() throws Exception {
+	void tearDown() {
+		this.app = null;
 	}
 
 	@Test
-	public void testCreateSentryEvent() {
+	void testCreateSentryEvent() {
 		long timeMillis = 1663715618107L;
 		Log4jLogEvent.Builder b = Log4jLogEvent.newBuilder();
 		ContextualMessage msg = new ContextualMessage(

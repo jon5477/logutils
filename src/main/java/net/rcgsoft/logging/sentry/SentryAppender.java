@@ -1,5 +1,5 @@
 /*********************************************************************
-* Copyright (c) 2024 Jon Huang and David Xu
+* Copyright (c) 2025 Jon Huang and David Xu
 *
 * This program and the accompanying materials are made
 * available under the terms of the Eclipse Public License 2.0
@@ -10,6 +10,7 @@
 
 package net.rcgsoft.logging.sentry;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -36,8 +37,8 @@ import org.apache.logging.log4j.core.impl.ThrowableProxy;
 import org.apache.logging.log4j.message.Message;
 
 import io.sentry.Breadcrumb;
-import io.sentry.HubAdapter;
-import io.sentry.IHub;
+import io.sentry.IScopes;
+import io.sentry.ScopesAdapter;
 import io.sentry.Sentry;
 import io.sentry.SentryEvent;
 import io.sentry.SentryLevel;
@@ -65,15 +66,15 @@ public class SentryAppender extends AbstractAppender {
 	private static final String THREAD_NAME = "thread_name";
 
 	private final String dsn;
-	private final IHub hub;
+	private final IScopes scopes;
 
 	/**
 	 * Creates an instance of SentryAppender.
 	 * 
-	 * @param hub The Sentry Hub instance.
+	 * @param scopes The Sentry scopes instance.
 	 */
-	public SentryAppender(IHub hub) {
-		this(APPENDER_NAME, "", null, hub);
+	public SentryAppender(IScopes scopes) {
+		this(APPENDER_NAME, "", null, scopes);
 	}
 
 	/**
@@ -82,12 +83,12 @@ public class SentryAppender extends AbstractAppender {
 	 * @param name   The Appender name.
 	 * @param dsn    The Sentry DSN.
 	 * @param filter The Filter to associate with the Appender.
-	 * @param hub    The Sentry Hub instance.
+	 * @param scopes The Sentry scopes instance.
 	 */
-	protected SentryAppender(String name, String dsn, Filter filter, IHub hub) {
+	protected SentryAppender(String name, String dsn, Filter filter, IScopes scopes) {
 		super(name, filter, null, true, Property.EMPTY_ARRAY);
 		this.dsn = Objects.requireNonNull(dsn, "dsn cannot be null");
-		this.hub = Objects.requireNonNull(hub, "hub cannot be null");
+		this.scopes = Objects.requireNonNull(scopes, "scopes cannot be null");
 		this.addFilter(DropSentryFilter.INSTANCE);
 	}
 
@@ -106,7 +107,7 @@ public class SentryAppender extends AbstractAppender {
 			LOGGER.error("No name provided for SentryAppender");
 			return null;
 		}
-		return new SentryAppender(name, dsn != null ? dsn : "", filter, HubAdapter.getInstance());
+		return new SentryAppender(name, dsn != null ? dsn : "", filter, ScopesAdapter.getInstance());
 	}
 
 	/**
@@ -159,10 +160,10 @@ public class SentryAppender extends AbstractAppender {
 	@Override
 	public final void append(LogEvent logEvent) {
 		if (logEvent.getLevel().isMoreSpecificThan(Level.ERROR)) {
-			hub.captureEvent(createSentryEvent(logEvent));
+			scopes.captureEvent(createSentryEvent(logEvent));
 		}
 		if (logEvent.getLevel().isMoreSpecificThan(Level.INFO)) {
-			hub.addBreadcrumb(createBreadcrumb(logEvent));
+			scopes.addBreadcrumb(createBreadcrumb(logEvent));
 		}
 	}
 
@@ -173,7 +174,8 @@ public class SentryAppender extends AbstractAppender {
 	 * @return SentryEvent containing details provided by the logging system.
 	 */
 	protected final SentryEvent createSentryEvent(LogEvent logEvent) {
-		SentryEvent evt = new SentryEvent(new Date(logEvent.getTimeMillis()));
+		Instant timestamp = Instant.ofEpochMilli(logEvent.getTimeMillis());
+		SentryEvent evt = new SentryEvent(Date.from(timestamp));
 		Message logMsg = logEvent.getMessage();
 		io.sentry.protocol.Message msg = new io.sentry.protocol.Message();
 		msg.setMessage(logMsg.getFormat());

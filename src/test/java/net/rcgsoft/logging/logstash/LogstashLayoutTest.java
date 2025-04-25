@@ -19,9 +19,9 @@ import com.google.gson.JsonObject;
 
 import net.rcgsoft.logging.message.ContextualMessage;
 
-public class LogstashLayoutTest {
+class LogstashLayoutTest {
 	@Test
-	public void testFormatJson() {
+	void testFormatJson() {
 		LogstashLayout layout = LogstashLayout.createLayout(StandardCharsets.UTF_8);
 		Map<String, Object> logMeta = new HashMap<>();
 		logMeta.put("clientId", "1");

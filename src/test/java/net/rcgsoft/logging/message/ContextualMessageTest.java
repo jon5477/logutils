@@ -19,31 +19,32 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class ContextualMessageTest {
+class ContextualMessageTest {
 	private static final String MESSAGE_PATTERN = "Test Message with Parameter {}";
 	private static final Object[] ARGUMENTS = new Object[] { Integer.valueOf(1) };
-	private static final Exception EXCEPTION = new Exception("Test");
+	private Exception exception;
 	private ContextualMessage ctxMsg;
 
 	@BeforeEach
-	public void setUp() throws Exception {
-		ctxMsg = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), EXCEPTION);
+	void setUp() {
+		exception = new Exception("Test");
+		ctxMsg = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), exception);
 	}
 
 	@Test
-	public void testContextualMessageStringObjectArrayThrowable() {
-		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), EXCEPTION);
+	void testContextualMessageStringObjectArrayThrowable() {
+		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), exception);
 		assertEquals(MESSAGE_PATTERN, cm.getFormat());
 		assertArrayEquals(ARGUMENTS, cm.getParameters());
-		assertEquals(EXCEPTION, cm.getThrowable());
-		cm = new ContextualMessage(null, ARGUMENTS.clone(), EXCEPTION);
+		assertEquals(exception, cm.getThrowable());
+		cm = new ContextualMessage(null, ARGUMENTS.clone(), exception);
 		assertNull(cm.getFormat());
 		assertArrayEquals(ARGUMENTS, cm.getParameters());
-		assertEquals(EXCEPTION, cm.getThrowable());
-		cm = new ContextualMessage(MESSAGE_PATTERN, null, EXCEPTION);
+		assertEquals(exception, cm.getThrowable());
+		cm = new ContextualMessage(MESSAGE_PATTERN, null, exception);
 		assertEquals(MESSAGE_PATTERN, cm.getFormat());
 		assertNull(cm.getParameters());
-		assertEquals(EXCEPTION, cm.getThrowable());
+		assertEquals(exception, cm.getThrowable());
 		cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone(), null);
 		assertEquals(MESSAGE_PATTERN, cm.getFormat());
 		assertArrayEquals(ARGUMENTS, cm.getParameters());
@@ -51,7 +52,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testContextualMessageStringObjectArray() {
+	void testContextualMessageStringObjectArray() {
 		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS.clone());
 		assertEquals(MESSAGE_PATTERN, cm.getFormat());
 		assertArrayEquals(ARGUMENTS, cm.getParameters());
@@ -67,7 +68,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testContextualMessageStringObject() {
+	void testContextualMessageStringObject() {
 		ContextualMessage cm = new ContextualMessage(MESSAGE_PATTERN, ARGUMENTS[0]);
 		assertEquals(MESSAGE_PATTERN, cm.getFormat());
 		assertArrayEquals(new Object[] { ARGUMENTS[0] }, cm.getParameters());
@@ -83,7 +84,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testContextualMessageStringObjectObject() {
+	void testContextualMessageStringObjectObject() {
 		String msg = "Test Message 2 Parameters {} {}";
 		Integer arg1 = Integer.valueOf(1);
 		Integer arg2 = Integer.valueOf(2);
@@ -106,7 +107,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testGetContext() {
+	void testGetContext() {
 		Map<String, Object> ctx = ctxMsg.getContext();
 		assertNotNull(ctx);
 		assertTrue(ctx.isEmpty());
@@ -115,7 +116,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testWithContext() {
+	void testWithContext() {
 		// Check that adding information to the context works
 		Map<String, Object> ctx = new HashMap<>();
 		ctx.put("IntKey", Integer.valueOf(1));
@@ -129,7 +130,7 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testGetTags() {
+	void testGetTags() {
 		List<String> tags = ctxMsg.getTags();
 		assertNotNull(tags);
 		assertTrue(tags.isEmpty());
@@ -138,14 +139,14 @@ public class ContextualMessageTest {
 	}
 
 	@Test
-	public void testAddTag() {
+	void testAddTag() {
 		String tag = "TestTag";
 		ctxMsg.addTag(tag);
 		assertTrue(ctxMsg.getTags().contains(tag));
 	}
 
 	@Test
-	public void testAddTags() {
+	void testAddTags() {
 		List<String> tags = Arrays.asList("Tag1", "Tag2", "Tag3");
 		ctxMsg.addTags(tags);
 		Set<String> expectedTags = new HashSet<>(tags);
